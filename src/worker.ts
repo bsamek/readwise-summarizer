@@ -1,0 +1,147 @@
+interface Env {
+	READWISE_TOKEN: string;
+	ANTHROPIC_API_KEY: string;
+	RESEND_API_KEY: string;
+	EMAIL_TO: string;
+}
+
+interface WebhookPayload {
+	id: string;
+	title: string;
+	url: string;
+	source_url: string;
+	location: string;
+	category: string;
+	author: string;
+}
+
+interface ReaderDocument {
+	id: string;
+	title: string;
+	url: string;
+	source_url: string;
+	content: string;
+	html_content: string;
+	summary: string;
+	author: string;
+}
+
+export default {
+	async fetch(request: Request, env: Env): Promise<Response> {
+		if (request.method !== "POST") {
+			return new Response("Method not allowed", { status: 405 });
+		}
+
+		const url = new URL(request.url);
+		if (url.pathname !== "/webhook") {
+			return new Response("Not found", { status: 404 });
+		}
+
+		try {
+			const payload = (await request.json()) as WebhookPayload;
+
+			if (payload.location !== "later") {
+				return new Response("Ignored: not a 'later' document", { status: 200 });
+			}
+
+			// Fetch full article content from Reader API
+			const article = await fetchArticle(payload.id, env.READWISE_TOKEN);
+			if (!article) {
+				return new Response("Article not found", { status: 404 });
+			}
+
+			const content = article.content || article.html_content || article.summary || "";
+			if (!content) {
+				return new Response("No content to summarize", { status: 200 });
+			}
+
+			// Summarize with Claude
+			const summary = await summarize(article.title, content, env.ANTHROPIC_API_KEY);
+
+			// Email the summary
+			await sendEmail(article.title, article.source_url || article.url, summary, env);
+
+			return new Response("OK", { status: 200 });
+		} catch (err) {
+			console.error("Webhook processing failed:", err);
+			return new Response("Internal error", { status: 500 });
+		}
+	},
+};
+
+async function fetchArticle(id: string, token: string): Promise<ReaderDocument | null> {
+	const resp = await fetch(`https://readwise.io/api/v3/list/?id=${id}`, {
+		headers: { Authorization: `Token ${token}` },
+	});
+
+	if (!resp.ok) {
+		console.error(`Reader API error: ${resp.status} ${await resp.text()}`);
+		return null;
+	}
+
+	const data = (await resp.json()) as { results: ReaderDocument[] };
+	return data.results?.[0] ?? null;
+}
+
+async function summarize(title: string, content: string, apiKey: string): Promise<string> {
+	// Truncate to ~80k chars to stay within token limits
+	const truncated = content.slice(0, 80_000);
+
+	const resp = await fetch("https://api.anthropic.com/v1/messages", {
+		method: "POST",
+		headers: {
+			"x-api-key": apiKey,
+			"anthropic-version": "2023-06-01",
+			"content-type": "application/json",
+		},
+		body: JSON.stringify({
+			model: "claude-sonnet-4-6-20250514",
+			max_tokens: 1024,
+			messages: [
+				{
+					role: "user",
+					content: `Summarize the following article in 3-4 concise paragraphs to help me decide whether to read it fully.
+
+- Paragraph 1: What is this article about? (core thesis/topic)
+- Paragraph 2: Key arguments, findings, or insights
+- Paragraph 3: Why this might matter / implications
+- Paragraph 4 (optional): Notable caveats, counterarguments, or what's missing
+
+Article title: ${title}
+
+Article content:
+${truncated}`,
+				},
+			],
+		}),
+	});
+
+	if (!resp.ok) {
+		throw new Error(`Claude API error: ${resp.status} ${await resp.text()}`);
+	}
+
+	const data = (await resp.json()) as {
+		content: { type: string; text: string }[];
+	};
+	return data.content[0].text;
+}
+
+async function sendEmail(title: string, articleUrl: string, summary: string, env: Env) {
+	const resp = await fetch("https://api.resend.com/emails", {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${env.RESEND_API_KEY}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({
+			from: "Readwise Summary <summary@resend.dev>",
+			to: env.EMAIL_TO,
+			subject: `Summary: ${title}`,
+			text: `${summary}\n\n---\nRead the full article: ${articleUrl}`,
+		}),
+	});
+
+	if (!resp.ok) {
+		throw new Error(`Resend API error: ${resp.status} ${await resp.text()}`);
+	}
+}
