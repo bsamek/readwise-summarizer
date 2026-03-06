@@ -38,7 +38,12 @@ export default {
 		}
 
 		try {
-			const payload = (await request.json()) as WebhookPayload;
+			let payload: WebhookPayload;
+			try {
+				payload = (await request.json()) as WebhookPayload;
+			} catch {
+				return new Response("OK", { status: 200 });
+			}
 
 			if (payload.location !== "later") {
 				return new Response("Ignored: not a 'later' document", { status: 200 });
