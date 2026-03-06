@@ -61,13 +61,13 @@ export default {
 			}
 
 			const title = article?.title || payload.title;
-			const articleUrl = article?.source_url || payload.source_url || payload.url;
+			const readerUrl = payload.url;
 
 			// Summarize with Claude
 			const summary = await summarize(title, content, env.ANTHROPIC_API_KEY);
 
 			// Email the summary
-			await sendEmail(title, articleUrl, summary, env);
+			await sendEmail(title, readerUrl, summary, env);
 
 			return new Response("OK", { status: 200 });
 		} catch (err) {
@@ -108,12 +108,7 @@ async function summarize(title: string, content: string, apiKey: string): Promis
 			messages: [
 				{
 					role: "user",
-					content: `Summarize the following article in 3-4 concise paragraphs to help me decide whether to read it fully.
-
-- Paragraph 1: What is this article about? (core thesis/topic)
-- Paragraph 2: Key arguments, findings, or insights
-- Paragraph 3: Why this might matter / implications
-- Paragraph 4 (optional): Notable caveats, counterarguments, or what's missing
+					content: `Summarize the following article in 3-5 concise prose paragraphs to help me decide whether to read it fully. Write in plain prose — no headers, no bold labels, no bullet points. Just flowing paragraphs.
 
 Article title: ${title}
 
