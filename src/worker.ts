@@ -45,26 +45,29 @@ export default {
 				return new Response("OK", { status: 200 });
 			}
 
+			console.log("Webhook payload:", JSON.stringify(payload));
+
 			if (payload.location !== "later") {
 				return new Response("Ignored: not a 'later' document", { status: 200 });
 			}
 
 			// Fetch full article content from Reader API
 			const article = await fetchArticle(payload.id, env.READWISE_TOKEN);
-			if (!article) {
-				return new Response("Article not found", { status: 404 });
-			}
 
-			const content = article.content || article.html_content || article.summary || "";
+			const content =
+				article?.content || article?.html_content || (payload as any).summary || "";
 			if (!content) {
 				return new Response("No content to summarize", { status: 200 });
 			}
 
+			const title = article?.title || payload.title;
+			const articleUrl = article?.source_url || payload.source_url || payload.url;
+
 			// Summarize with Claude
-			const summary = await summarize(article.title, content, env.ANTHROPIC_API_KEY);
+			const summary = await summarize(title, content, env.ANTHROPIC_API_KEY);
 
 			// Email the summary
-			await sendEmail(article.title, article.source_url || article.url, summary, env);
+			await sendEmail(title, articleUrl, summary, env);
 
 			return new Response("OK", { status: 200 });
 		} catch (err) {
@@ -75,7 +78,7 @@ export default {
 };
 
 async function fetchArticle(id: string, token: string): Promise<ReaderDocument | null> {
-	const resp = await fetch(`https://readwise.io/api/v3/list/?id=${id}`, {
+	const resp = await fetch(`https://readwise.io/api/v3/list/?id=${encodeURIComponent(id)}`, {
 		headers: { Authorization: `Token ${token}` },
 	});
 
@@ -100,7 +103,7 @@ async function summarize(title: string, content: string, apiKey: string): Promis
 			"content-type": "application/json",
 		},
 		body: JSON.stringify({
-			model: "claude-sonnet-4-6-20250514",
+			model: "claude-sonnet-4-6-latest",
 			max_tokens: 1024,
 			messages: [
 				{
