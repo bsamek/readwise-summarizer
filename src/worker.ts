@@ -1,5 +1,6 @@
 interface Env {
 	READWISE_TOKEN: string;
+	READWISE_WEBHOOK_SECRET: string;
 	ANTHROPIC_API_KEY: string;
 	RESEND_API_KEY: string;
 	EMAIL_TO: string;
@@ -13,6 +14,7 @@ interface WebhookPayload {
 	location: string;
 	category: string;
 	author: string;
+	secret?: string;
 }
 
 interface ReaderDocument {
@@ -46,7 +48,16 @@ export default {
 				return new Response("OK", { status: 200 });
 			}
 
-			console.log("Webhook payload:", JSON.stringify(payload));
+			if (
+				!payload.secret ||
+				!constantTimeEqual(payload.secret, env.READWISE_WEBHOOK_SECRET)
+			) {
+				console.warn("Webhook rejected: invalid secret", payload.id);
+				return new Response("Forbidden", { status: 403 });
+			}
+
+			const { secret: _ignoredSecret, ...loggablePayload } = payload;
+			console.log("Webhook payload:", JSON.stringify(loggablePayload));
 
 			if (payload.location !== "later") {
 				return new Response("Ignored: not a 'later' document", { status: 200 });
@@ -148,4 +159,17 @@ async function sendEmail(title: string, articleUrl: string, summary: string, env
 	if (!resp.ok) {
 		throw new Error(`Resend API error: ${resp.status} ${await resp.text()}`);
 	}
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+	if (left.length !== right.length) {
+		return false;
+	}
+
+	let mismatch = 0;
+	for (let i = 0; i < left.length; i += 1) {
+		mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
+	}
+
+	return mismatch === 0;
 }
