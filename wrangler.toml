@@ -18,4 +18,4 @@ name = "EMAIL"
 crons = ["*/30 * * * *"]
 
 [vars]
-RSS_FEEDS = '[]'
+RSS_FEEDS = '[{"url":"https://marginalrevolution.com/feed","name":"Marginal Revolution"},{"url":"https://openai.com/news/rss.xml","name":"OpenAI Blog"},{"url":"https://simonwillison.net/atom/everything/","name":"Simon Willison"}]'
