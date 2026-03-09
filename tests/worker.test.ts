@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-	extractOriginalArticleUrl,
 	extractSummaryContent,
 	handleGmailForwardingConfirmation,
 	isGmailForwardingConfirmation,
@@ -197,17 +196,6 @@ describe("email content extraction", () => {
 		);
 		expect(content).not.toContain("From:");
 		expect(content).not.toContain("Subject:");
-	});
-});
-
-describe("article URL extraction", () => {
-	it("prefers a non-tracking article URL", () => {
-		const html = `
-			<p><a href="https://example.com/unsubscribe">Unsubscribe</a></p>
-			<p><a href="https://click.example.net/track?url=https%3A%2F%2Fexample.com%2Fstory">Read story</a></p>
-		`;
-
-		expect(extractOriginalArticleUrl(html)).toBe("https://example.com/story");
 	});
 });
 
