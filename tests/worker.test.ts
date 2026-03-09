@@ -147,6 +147,18 @@ describe("article URL extraction", () => {
 
 		expect(extractOriginalArticleUrl(html)).toBe("https://example.com/story");
 	});
+
+	it("prefers the article headline over Substack subscribe CTAs", () => {
+		const html = `
+			<p>Forwarded this email? <a href="https://substack.com/redirect/subscribe">Subscribe here</a> for more</p>
+			<h1><a href="https://heatmap.news/p/solar-in-poor-countries-is-creating-a-huge-lead-hazard">Solar in poor countries is creating a huge lead hazard</a></h1>
+			<p><a href="https://substack.com/app-link/post">Read in app</a></p>
+		`;
+
+		expect(extractOriginalArticleUrl(html)).toBe(
+			"https://heatmap.news/p/solar-in-poor-countries-is-creating-a-huge-lead-hazard",
+		);
+	});
 });
 
 describe("gmail forwarding detection", () => {

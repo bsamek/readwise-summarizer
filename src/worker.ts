@@ -43,6 +43,18 @@ const INLINE_SKIP_PATTERNS = [
 	/^\s*was this email forwarded to you\?\b/i,
 ];
 
+const GENERIC_LINK_TEXT_PATTERNS = [
+	/\bsubscribe here\b/i,
+	/^\s*subscribe\b/i,
+	/\bread in app\b/i,
+	/\bopen in app\b/i,
+	/\bview in browser\b/i,
+	/\bread online\b/i,
+	/^\s*(like|comment|restack|share|forward)\s*$/i,
+	/^\s*upgrade\b/i,
+	/^\s*start writing\b/i,
+];
+
 const QUOTED_REPLY_PATTERNS = [/^\s*on .+ wrote:\s*$/i, /^\s*>+/, /^\s*from:\s+/i];
 
 const IGNORED_URL_HOSTS = new Set([
@@ -60,11 +72,15 @@ const IGNORED_URL_HOSTS = new Set([
 ]);
 
 const IGNORED_URL_PATH_PATTERNS = [
+	/(^|\/)account(?:\/|$)/i,
+	/(^|\/)(login|sign-?in)(?:\/|$)/i,
 	/unsubscribe/i,
 	/manage-?preferences/i,
 	/privacy/i,
 	/share/i,
+	/(^|\/)settings(?:\/|$)/i,
 	/social/i,
+	/(^|\/)subscribe(?:\/|$)/i,
 	"open.spotify.com",
 ];
 
@@ -306,22 +322,40 @@ export function extractOriginalArticleUrl(
 	text?: string,
 ): string | undefined {
 	const candidates = [
-		...extractUrlsFromHtml(html || ""),
-		...extractUrlsFromText(text || ""),
+		...extractUrlCandidatesFromHtml(html || ""),
+		...extractUrlCandidatesFromText(text || ""),
 	];
+	let bestMatch:
+		| {
+				index: number;
+				score: number;
+				url: string;
+		  }
+		| undefined;
 
 	for (const candidate of candidates) {
-		const normalized = unwrapTrackingUrl(candidate);
+		const normalized = unwrapTrackingUrl(candidate.rawUrl);
 		if (!normalized) {
 			continue;
 		}
 
 		if (isLikelyArticleUrl(normalized)) {
-			return normalized;
+			const score = scoreArticleUrlCandidate(candidate, normalized);
+			if (
+				!bestMatch ||
+				score > bestMatch.score ||
+				(score === bestMatch.score && candidate.index < bestMatch.index)
+			) {
+				bestMatch = {
+					index: candidate.index,
+					score,
+					url: normalized,
+				};
+			}
 		}
 	}
 
-	return undefined;
+	return bestMatch?.url;
 }
 
 export function unwrapTrackingUrl(rawUrl: string): string | undefined {
@@ -657,14 +691,97 @@ function collapseWhitespace(value: string): string {
 		.trim();
 }
 
-function extractUrlsFromHtml(html: string): string[] {
-	const matches = html.matchAll(/href\s*=\s*(['"])(.*?)\1/gi);
-	return Array.from(matches, (match) => decodeHtmlEntities(match[2]));
+type UrlCandidate = {
+	index: number;
+	label?: string;
+	rawUrl: string;
+	source: "html" | "text";
+};
+
+function extractUrlCandidatesFromHtml(html: string): UrlCandidate[] {
+	const matches = html.matchAll(
+		/<a\b[^>]*href\s*=\s*(['"])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi,
+	);
+	const candidates: UrlCandidate[] = Array.from(matches, (match, index) => {
+		const label = collapseWhitespace(stripHtml(match[3]));
+		return {
+			index,
+			label: label || undefined,
+			rawUrl: decodeHtmlEntities(match[2]),
+			source: "html" as const,
+		};
+	});
+
+	if (candidates.length > 0) {
+		const seenUrls = new Set(candidates.map((candidate) => candidate.rawUrl));
+		const hrefMatches = html.matchAll(/href\s*=\s*(['"])(.*?)\1/gi);
+
+		for (const match of hrefMatches) {
+			const rawUrl = decodeHtmlEntities(match[2]);
+			if (seenUrls.has(rawUrl)) {
+				continue;
+			}
+
+			candidates.push({
+				index: candidates.length,
+				rawUrl,
+				source: "html" as const,
+			});
+			seenUrls.add(rawUrl);
+		}
+
+		return candidates;
+	}
+
+	const hrefMatches = html.matchAll(/href\s*=\s*(['"])(.*?)\1/gi);
+	return Array.from(hrefMatches, (match, index) => ({
+		index,
+		rawUrl: decodeHtmlEntities(match[2]),
+		source: "html" as const,
+	}));
 }
 
-function extractUrlsFromText(text: string): string[] {
+function extractUrlCandidatesFromText(text: string): UrlCandidate[] {
 	const matches = text.match(/https?:\/\/[^\s<>"')]+/gi);
-	return matches ? matches.map((match) => match.trim()) : [];
+	return matches
+		? matches.map((match, index) => ({
+				index: 10_000 + index,
+				rawUrl: match.trim(),
+				source: "text" as const,
+			}))
+		: [];
+}
+
+function scoreArticleUrlCandidate(candidate: UrlCandidate, normalizedUrl: string): number {
+	let score = candidate.source === "html" ? 1 : 0;
+	const label = collapseWhitespace(candidate.label || "");
+	const wordCount = label ? label.split(/\s+/).length : 0;
+
+	if (label) {
+		if (GENERIC_LINK_TEXT_PATTERNS.some((pattern) => pattern.test(label))) {
+			score -= 8;
+		}
+
+		if (label.length >= 32) {
+			score += 2;
+		}
+
+		if (wordCount >= 5) {
+			score += 3;
+		}
+	}
+
+	const url = safeUrl(normalizedUrl);
+	if (!url) {
+		return score;
+	}
+
+	const path = url.pathname.toLowerCase();
+	if (/\/p\/[^/]+/.test(path)) {
+		score += 2;
+	}
+
+	return score;
 }
 
 function normalizeCandidateUrl(rawUrl: string): string | undefined {
