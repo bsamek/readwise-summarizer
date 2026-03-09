@@ -93,6 +93,7 @@ const IGNORED_URL_HOSTS = new Set([
 
 const IGNORED_URL_PATH_PATTERNS = [
 	/(^|\/)account(?:\/|$)/i,
+	/(^|\/)app-link(?:\/|$)/i,
 	/(^|\/)(login|sign-?in)(?:\/|$)/i,
 	/unsubscribe/i,
 	/manage-?preferences/i,
@@ -240,7 +241,11 @@ export async function processIncomingEmail(
 		return;
 	}
 
-	const sourceUrl = extractOriginalArticleUrl(metadata.html, metadata.text);
+	const sourceUrl = extractOriginalArticleUrl(
+		metadata.html,
+		metadata.text,
+		metadata.subject,
+	);
 	const summary = await summarizeEmail(
 		{
 			subject: metadata.subject,
@@ -314,6 +319,7 @@ export function extractSummaryContent(metadata: EmailMetadata): string {
 export function extractOriginalArticleUrl(
 	html?: string,
 	text?: string,
+	subject?: string,
 ): string | undefined {
 	const candidates = [
 		...extractUrlCandidatesFromHtml(html || ""),
@@ -334,7 +340,7 @@ export function extractOriginalArticleUrl(
 		}
 
 		if (isLikelyArticleUrl(normalized)) {
-			const score = scoreArticleUrlCandidate(candidate, normalized);
+			const score = scoreArticleUrlCandidate(candidate, normalized, subject);
 			if (
 				!bestMatch ||
 				score > bestMatch.score ||
@@ -368,17 +374,48 @@ export function unwrapTrackingUrl(rawUrl: string): string | undefined {
 			.map((key) => url.searchParams.get(key))
 			.find((value) => value && /^https?:\/\//i.test(value));
 
-		if (!redirectTarget) {
+		const substackRedirectTarget = unwrapSubstackRedirectTarget(url);
+
+		const nextTarget = redirectTarget ?? substackRedirectTarget;
+		if (!nextTarget) {
 			return url.toString();
 		}
 
-		current = normalizeCandidateUrl(redirectTarget);
+		current = normalizeCandidateUrl(nextTarget);
 		if (!current) {
 			return undefined;
 		}
 	}
 
 	return current;
+}
+
+function unwrapSubstackRedirectTarget(url: URL): string | undefined {
+	if (normalizeHostname(url.hostname) !== "substack.com") {
+		return undefined;
+	}
+
+	const segments = url.pathname.split("/").filter(Boolean);
+	if (segments[0] !== "redirect" || segments.length < 3) {
+		return undefined;
+	}
+
+	const token = segments.at(-1)?.split(".")[0];
+	if (!token) {
+		return undefined;
+	}
+
+	const payload = decodeBase64Url(token);
+	if (!payload) {
+		return undefined;
+	}
+
+	try {
+		const parsed = JSON.parse(payload) as { e?: string };
+		return /^https?:\/\//i.test(parsed.e || "") ? parsed.e : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 export function isLikelyArticleUrl(candidate: string): boolean {
@@ -879,10 +916,15 @@ function extractUrlCandidatesFromText(text: string): UrlCandidate[] {
 		: [];
 }
 
-function scoreArticleUrlCandidate(candidate: UrlCandidate, normalizedUrl: string): number {
+function scoreArticleUrlCandidate(
+	candidate: UrlCandidate,
+	normalizedUrl: string,
+	subject?: string,
+): number {
 	let score = candidate.source === "html" ? 1 : 0;
 	const label = collapseWhitespace(candidate.label || "");
 	const wordCount = label ? label.split(/\s+/).length : 0;
+	const normalizedSubject = normalizeComparisonText(stripForwardSubjectPrefix(subject || ""));
 
 	if (label) {
 		if (GENERIC_LINK_TEXT_PATTERNS.some((pattern) => pattern.test(label))) {
@@ -898,6 +940,19 @@ function scoreArticleUrlCandidate(candidate: UrlCandidate, normalizedUrl: string
 		}
 	}
 
+	if (label && normalizedSubject) {
+		const normalizedLabel = normalizeComparisonText(label);
+		if (normalizedLabel === normalizedSubject) {
+			score += 10;
+		} else if (
+			normalizedLabel.length >= 16 &&
+			(normalizedLabel.includes(normalizedSubject) ||
+				normalizedSubject.includes(normalizedLabel))
+		) {
+			score += 6;
+		}
+	}
+
 	const url = safeUrl(normalizedUrl);
 	if (!url) {
 		return score;
@@ -908,7 +963,36 @@ function scoreArticleUrlCandidate(candidate: UrlCandidate, normalizedUrl: string
 		score += 2;
 	}
 
+	if (normalizedSubject) {
+		const normalizedPath = normalizeComparisonText(url.pathname);
+		if (normalizedPath.includes(normalizedSubject)) {
+			score += 8;
+		}
+	}
+
 	return score;
+}
+
+function stripForwardSubjectPrefix(subject: string): string {
+	return subject.replace(/^(?:\s*(?:re|fw|fwd):\s*)+/i, "").trim();
+}
+
+function normalizeComparisonText(value: string): string {
+	return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function decodeBase64Url(value: string): string | undefined {
+	const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+	const padded = normalized.padEnd(
+		normalized.length + ((4 - (normalized.length % 4)) % 4),
+		"=",
+	);
+
+	try {
+		return atob(padded);
+	} catch {
+		return undefined;
+	}
 }
 
 function normalizeCandidateUrl(rawUrl: string): string | undefined {
