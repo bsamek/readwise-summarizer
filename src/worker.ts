@@ -1,7 +1,7 @@
 import PostalMime, { type Address, type Email as ParsedEmail } from "postal-mime";
 
 export interface Env {
-	ANTHROPIC_API_KEY: string;
+	OPENAI_API_KEY: string;
 	RESEND_API_KEY: string;
 	EMAIL_TO: string;
 	SUMMARY_FROM: string;
@@ -19,10 +19,13 @@ export interface EmailMetadata {
 }
 
 const HEALTH_PATH = "/healthz";
-const MAX_SUMMARY_CHARS = 80_000;
+// App-side guardrail for cost and latency; GPT-5.4 can handle far more context.
+const MAX_SUMMARY_INPUT_CHARS = 80_000;
 const DEDUPE_TTL_SECONDS = 60 * 60 * 24 * 7;
 const MAX_URL_UNWRAPS = 3;
 const SUMMARY_PREFIX = "Newsletter Summary";
+const SUMMARY_MODEL = "gpt-5.4";
+const SUMMARY_MAX_OUTPUT_TOKENS = 1024;
 
 const FOOTER_BREAK_PATTERNS = [
 	/^\s*unsubscribe\b/i,
@@ -55,7 +58,24 @@ const GENERIC_LINK_TEXT_PATTERNS = [
 	/^\s*start writing\b/i,
 ];
 
-const QUOTED_REPLY_PATTERNS = [/^\s*on .+ wrote:\s*$/i, /^\s*>+/, /^\s*from:\s+/i];
+const QUOTED_REPLY_PATTERNS = [/^\s*on .+ wrote:\s*$/i, /^\s*>+/];
+
+const FORWARDED_MESSAGE_PATTERNS = [
+	/^\s*-{2,}\s*forwarded message\s*-{2,}\s*$/i,
+	/^\s*begin forwarded message:?$/i,
+];
+
+const FORWARDED_HEADER_PATTERNS = [
+	/^\s*from:\s+/i,
+	/^\s*date:\s+/i,
+	/^\s*subject:\s+/i,
+	/^\s*to:\s+/i,
+	/^\s*cc:\s+/i,
+	/^\s*reply-to:\s+/i,
+	/^\s*sent:\s+/i,
+];
+
+const FORWARDED_SUBJECT_PATTERNS = [/^\s*fwd:\s+/i, /^\s*fw:\s+/i];
 
 const IGNORED_URL_HOSTS = new Set([
 	"facebook.com",
@@ -228,7 +248,7 @@ export async function processIncomingEmail(
 			sourceUrl,
 			content,
 		},
-		env.ANTHROPIC_API_KEY,
+		env.OPENAI_API_KEY,
 	);
 
 	await sendSummaryEmail(
@@ -283,38 +303,12 @@ export function getEmailMetadata(
 }
 
 export function extractSummaryContent(metadata: EmailMetadata): string {
-	const baseText = normalizeText(metadata.text || stripHtml(metadata.html || ""));
-	if (!baseText) {
-		return "";
-	}
+	const candidates = [metadata.text || "", stripHtml(metadata.html || "")]
+		.map((value) => cleanSummaryText(value, metadata.subject))
+		.filter(Boolean)
+		.sort((left, right) => right.length - left.length);
 
-	const lines = baseText.split("\n");
-	const cleaned: string[] = [];
-
-	for (const line of lines) {
-		const trimmed = line.trim();
-
-		if (!trimmed) {
-			cleaned.push("");
-			continue;
-		}
-
-		if (INLINE_SKIP_PATTERNS.some((pattern) => pattern.test(trimmed))) {
-			continue;
-		}
-
-		if (QUOTED_REPLY_PATTERNS.some((pattern) => pattern.test(trimmed))) {
-			break;
-		}
-
-		if (FOOTER_BREAK_PATTERNS.some((pattern) => pattern.test(trimmed))) {
-			break;
-		}
-
-		cleaned.push(trimmed);
-	}
-
-	return collapseWhitespace(cleaned.join("\n")).slice(0, MAX_SUMMARY_CHARS);
+	return (candidates[0] || "").slice(0, MAX_SUMMARY_INPUT_CHARS);
 }
 
 export function extractOriginalArticleUrl(
@@ -447,43 +441,61 @@ export async function summarizeEmail(
 	},
 	apiKey: string,
 ): Promise<string> {
-	const resp = await fetch("https://api.anthropic.com/v1/messages", {
+	const resp = await fetch("https://api.openai.com/v1/responses", {
 		method: "POST",
 		headers: {
-			"x-api-key": apiKey,
-			"anthropic-version": "2023-06-01",
-			"content-type": "application/json",
+			Authorization: `Bearer ${apiKey}`,
+			"Content-Type": "application/json",
 		},
 		body: JSON.stringify({
-			model: "claude-sonnet-4-6",
-			max_tokens: 1024,
-			messages: [
+			model: SUMMARY_MODEL,
+			reasoning: {
+				effort: "none",
+			},
+			max_output_tokens: SUMMARY_MAX_OUTPUT_TOKENS,
+			instructions:
+				"Summarize the following forwarded newsletter or article email in 3-5 concise prose paragraphs. Write in plain prose with no headers, no labels, and no bullet points.",
+			input: [
 				{
 					role: "user",
-					content: `Summarize the following forwarded newsletter or article email in 3-5 concise prose paragraphs. Write in plain prose with no headers, no labels, and no bullet points.
-
-Email subject: ${input.subject}
+					content: [
+						{
+							type: "input_text",
+							text: `Email subject: ${input.subject}
 Email sender: ${input.sender}
 Original article URL: ${input.sourceUrl || "Unavailable"}
 
 Email content:
-${input.content.slice(0, MAX_SUMMARY_CHARS)}`,
+${input.content.slice(0, MAX_SUMMARY_INPUT_CHARS)}`,
+						},
+					],
 				},
 			],
 		}),
 	});
 
 	if (!resp.ok) {
-		throw new Error(`Claude API error: ${resp.status} ${await resp.text()}`);
+		throw new Error(
+			`OpenAI Responses API error: ${resp.status} ${await resp.text()}`,
+		);
 	}
 
 	const data = (await resp.json()) as {
-		content: { type: string; text: string }[];
+		output?: {
+			type: string;
+			content?: {
+				type: string;
+				text?: string;
+			}[];
+		}[];
 	};
-	const summary = data.content.find((item) => item.type === "text")?.text?.trim();
+	const summary = data.output
+		?.flatMap((item) => (item.type === "message" ? item.content || [] : []))
+		.find((item) => item.type === "output_text")
+		?.text?.trim();
 
 	if (!summary) {
-		throw new Error("Claude API returned no text content");
+		throw new Error("OpenAI Responses API returned no text content");
 	}
 
 	return summary;
@@ -678,9 +690,124 @@ function stripHtml(html: string): string {
 			.replace(/<style[\s\S]*?<\/style>/gi, " ")
 			.replace(/<script[\s\S]*?<\/script>/gi, " ")
 			.replace(/<br\s*\/?>/gi, "\n")
-			.replace(/<\/(p|div|section|article|li|h[1-6])>/gi, "\n")
+			.replace(/<\/(p|div|section|article|li|h[1-6]|tr|table|tbody|thead|blockquote)>/gi, "\n")
 			.replace(/<[^>]+>/g, " "),
 	);
+}
+
+function cleanSummaryText(value: string, subject: string): string {
+	const baseText = normalizeText(value);
+	if (!baseText) {
+		return "";
+	}
+
+	const lines = baseText.split("\n");
+	const cleaned: string[] = [];
+
+	for (let index = 0; index < lines.length; index += 1) {
+		const trimmed = lines[index].trim();
+
+		if (!trimmed) {
+			cleaned.push("");
+			continue;
+		}
+
+		if (FORWARDED_MESSAGE_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+			index = skipForwardedHeaderBlock(lines, index + 1);
+			continue;
+		}
+
+		if (
+			isLikelyForwardedHeaderBlockStart(lines, index, subject, cleaned.length > 0)
+		) {
+			index = skipForwardedHeaderBlock(lines, index);
+			continue;
+		}
+
+		if (INLINE_SKIP_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+			continue;
+		}
+
+		if (QUOTED_REPLY_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+			break;
+		}
+
+		if (FOOTER_BREAK_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+			break;
+		}
+
+		cleaned.push(trimmed);
+	}
+
+	return collapseWhitespace(cleaned.join("\n"));
+}
+
+function isLikelyForwardedHeaderBlockStart(
+	lines: string[],
+	startIndex: number,
+	subject: string,
+	hasCollectedContent: boolean,
+): boolean {
+	if (
+		hasCollectedContent &&
+		!FORWARDED_SUBJECT_PATTERNS.some((pattern) => pattern.test(subject))
+	) {
+		return false;
+	}
+
+	let headerCount = 0;
+
+	for (
+		let index = startIndex;
+		index < lines.length && index < startIndex + 8;
+		index += 1
+	) {
+		const rawLine = lines[index];
+		const trimmed = rawLine.trim();
+
+		if (!trimmed) {
+			break;
+		}
+
+		if (FORWARDED_HEADER_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+			headerCount += 1;
+			continue;
+		}
+
+		if (/^[ \t]+/.test(rawLine) && headerCount > 0) {
+			continue;
+		}
+
+		break;
+	}
+
+	return headerCount >= 2;
+}
+
+function skipForwardedHeaderBlock(lines: string[], startIndex: number): number {
+	let sawHeader = false;
+
+	for (let index = startIndex; index < lines.length; index += 1) {
+		const rawLine = lines[index];
+		const trimmed = rawLine.trim();
+
+		if (!trimmed) {
+			return sawHeader ? index : startIndex - 1;
+		}
+
+		if (FORWARDED_HEADER_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+			sawHeader = true;
+			continue;
+		}
+
+		if (/^[ \t]+/.test(rawLine) && sawHeader) {
+			continue;
+		}
+
+		return sawHeader ? index - 1 : startIndex - 1;
+	}
+
+	return lines.length;
 }
 
 function collapseWhitespace(value: string): string {

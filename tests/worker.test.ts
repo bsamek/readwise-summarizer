@@ -90,7 +90,7 @@ function createForwardableEmailMessage(rawEmail: string): ForwardableEmailMessag
 
 function createEnv(overrides?: Partial<Env>): Env {
 	return {
-		ANTHROPIC_API_KEY: "anthropic-test-key",
+		OPENAI_API_KEY: "openai-test-key",
 		RESEND_API_KEY: "resend-test-key",
 		EMAIL_TO: "me@example.com",
 		SUMMARY_FROM: "summary@example.com",
@@ -135,6 +135,68 @@ describe("email content extraction", () => {
 		};
 
 		expect(extractSummaryContent(metadata)).toBe("");
+	});
+
+	it("skips forwarded headers and keeps the forwarded body", () => {
+		const metadata: EmailMetadata = {
+			messageId: "<3@example.com>",
+			subject: "Fwd: Japan can be America's arsenal",
+			fromName: "Brian Samek",
+			fromAddress: "brian@example.com",
+			text: [
+				"---------- Forwarded message ---------",
+				"From: Example Writer <author@example.com>",
+				"Date: Sun, 8 Mar 2026 09:00:00 -0400",
+				"Subject: Japan can be America's arsenal",
+				"To: Brian Samek <brian@example.com>",
+				"",
+				"Japan's factories could help absorb allied defense demand.",
+				"",
+				"That depends on production scale, export policy, and coordination.",
+				"",
+				"Unsubscribe",
+			].join("\n"),
+		};
+
+		expect(extractSummaryContent(metadata)).toBe(
+			"Japan's factories could help absorb allied defense demand.\n\nThat depends on production scale, export policy, and coordination.",
+		);
+	});
+
+	it("prefers richer HTML content when the text part is sparse", () => {
+		const metadata: EmailMetadata = {
+			messageId: "<4@example.com>",
+			subject: "Fwd: Japan can be America's arsenal",
+			fromName: "Brian Samek",
+			fromAddress: "brian@example.com",
+			text: [
+				"---------- Forwarded message ---------",
+				"From: Example Writer <author@example.com>",
+				"Subject: Japan can be America's arsenal",
+				"",
+				"https://example.com/story",
+			].join("\n"),
+			html: [
+				"<table>",
+				"<tr><td>From:</td><td>Example Writer &lt;author@example.com&gt;</td></tr>",
+				"<tr><td>Subject:</td><td>Japan can be America's arsenal</td></tr>",
+				"</table>",
+				"<p>Japan's factories could help absorb allied defense demand.</p>",
+				"<p>That depends on production scale, export policy, and coordination.</p>",
+				"<p>Unsubscribe</p>",
+			].join(""),
+		};
+
+		const content = extractSummaryContent(metadata);
+
+		expect(content).toContain(
+			"Japan's factories could help absorb allied defense demand.",
+		);
+		expect(content).toContain(
+			"That depends on production scale, export policy, and coordination.",
+		);
+		expect(content).not.toContain("From:");
+		expect(content).not.toContain("Subject:");
 	});
 });
 
@@ -220,10 +282,17 @@ describe("dedupe processing", () => {
 
 	it("processes the same email only once", async () => {
 		fetchMock.mockImplementation(async (input) => {
-			if (typeof input === "string" && input.includes("anthropic.com")) {
+			if (typeof input === "string" && input.includes("api.openai.com")) {
 				return new Response(
 					JSON.stringify({
-						content: [{ type: "text", text: "A concise summary." }],
+						output: [
+							{
+								type: "message",
+								content: [
+									{ type: "output_text", text: "A concise summary." },
+								],
+							},
+						],
 					}),
 					{ status: 200, headers: { "Content-Type": "application/json" } },
 				);
@@ -256,5 +325,19 @@ describe("dedupe processing", () => {
 		expect(resendCall?.[1]?.headers).toMatchObject({
 			"Idempotency-Key": expect.stringMatching(/^email:[a-f0-9]{64}$/),
 		});
+
+		const openAiCall = fetchMock.mock.calls.find(
+			([input]) => typeof input === "string" && input.includes("api.openai.com"),
+		);
+		expect(openAiCall).toBeTruthy();
+		expect(openAiCall?.[1]?.body).toEqual(
+			expect.stringContaining('"model":"gpt-5.4"'),
+		);
+		expect(openAiCall?.[1]?.body).toEqual(
+			expect.stringContaining('"reasoning":{"effort":"none"}'),
+		);
+		expect(openAiCall?.[1]?.body).toEqual(
+			expect.stringContaining('"max_output_tokens":1024'),
+		);
 	});
 });
