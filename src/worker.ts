@@ -90,7 +90,7 @@ const GMAIL_FORWARDING_FROM = "forwarding-noreply@google.com";
 const GMAIL_FORWARDING_SUBJECT = /gmail forwarding confirmation/i;
 
 export default {
-	async fetch(request: Request, env: Env): Promise<Response> {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		const url = new URL(request.url);
 
 		if (request.method === "GET" && url.pathname === HEALTH_PATH) {
@@ -102,7 +102,7 @@ export default {
 		}
 
 		if (request.method === "POST" && url.pathname === "/api/save") {
-			return handleApiSave(request, env);
+			return handleApiSave(request, env, ctx);
 		}
 
 		return new Response("Not found", { status: 404 });
@@ -165,6 +165,7 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 export async function handleApiSave(
 	request: Request,
 	env: Env,
+	ctx?: ExecutionContext,
 ): Promise<Response> {
 	const authHeader = request.headers.get("Authorization") || "";
 	const token = authHeader.startsWith("Bearer ")
@@ -207,22 +208,30 @@ export async function handleApiSave(
 		env.ANTHROPIC_API_KEY,
 	);
 
-	await sendSummaryEmail(
-		{
-			subject: body.title,
-			sender,
-			summary,
-		},
-		env,
-		dedupeKey,
-	);
+	// Respond immediately after summarization; send email and record in background
+	const backgroundWork = async () => {
+		await sendSummaryEmail(
+			{
+				subject: body.title!,
+				sender,
+				summary,
+			},
+			env,
+			dedupeKey,
+		);
+		await recordProcessedEmail(dedupeKey, env.PROCESSED_EMAILS, {
+			status: "sent",
+			title: body.title!,
+			url: body.url!,
+			source: "extension",
+		});
+	};
 
-	await recordProcessedEmail(dedupeKey, env.PROCESSED_EMAILS, {
-		status: "sent",
-		title: body.title,
-		url: body.url,
-		source: "extension",
-	});
+	if (ctx) {
+		ctx.waitUntil(backgroundWork().catch(console.error));
+	} else {
+		await backgroundWork();
+	}
 
 	return jsonResponse({ ok: true, status: "sent" });
 }

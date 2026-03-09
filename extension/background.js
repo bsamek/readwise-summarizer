@@ -19,20 +19,20 @@ async function handleSummarize() {
     return { error: "No active tab found." };
   }
 
-  // Inject Readability.js then content.js into the active tab
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    files: ["lib/Readability.js", "content.js"],
-  });
+  // Run script injection and settings fetch in parallel
+  const [results, settings] = await Promise.all([
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["lib/Readability.js", "content.js"],
+    }),
+    chrome.storage.sync.get(["workerUrl", "apiKey"]),
+  ]);
 
   const extraction = results?.[results.length - 1]?.result;
 
   if (!extraction || extraction.error) {
     return { error: extraction?.error || "Extraction returned no result." };
   }
-
-  // Get settings from storage
-  const settings = await chrome.storage.sync.get(["workerUrl", "apiKey"]);
 
   if (!settings.workerUrl || !settings.apiKey) {
     return { error: "Please configure Worker URL and API key in settings." };
