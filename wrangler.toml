@@ -13,3 +13,9 @@ preview_id = "5160d02695ca400f8c737c71516b0d7c"
 # production delivery happens through Resend.
 [[send_email]]
 name = "EMAIL"
+
+[triggers]
+crons = ["*/30 * * * *"]
+
+[vars]
+RSS_FEEDS = '[]'

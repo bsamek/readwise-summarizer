@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+	createRssDedupeKey,
 	extractSummaryContent,
 	handleGmailForwardingConfirmation,
 	isGmailForwardingConfirmation,
+	parseFeedItems,
 	processIncomingEmail,
+	processRssFeeds,
 	type EmailMetadata,
 	type Env,
+	type RssItem,
 } from "../src/worker";
 
 class MemoryKVNamespace {
@@ -94,6 +98,7 @@ function createEnv(overrides?: Partial<Env>): Env {
 		EMAIL_TO: "me@example.com",
 		SUMMARY_FROM: "summary@example.com",
 		PROCESSED_EMAILS: new MemoryKVNamespace() as unknown as KVNamespace,
+		RSS_FEEDS: "[]",
 		...overrides,
 	};
 }
@@ -315,5 +320,208 @@ describe("dedupe processing", () => {
 		expect(openAiCall?.[1]?.body).toEqual(
 			expect.stringContaining('"max_output_tokens":1024'),
 		);
+	});
+});
+
+describe("RSS feed parsing", () => {
+	it("parses RSS 2.0 items", () => {
+		const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Blog</title>
+    <item>
+      <title>First Post</title>
+      <link>https://example.com/first</link>
+      <guid>https://example.com/first</guid>
+      <description>Short description of the first post.</description>
+      <pubDate>Mon, 09 Mar 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Second Post</title>
+      <link>https://example.com/second</link>
+      <guid>https://example.com/second</guid>
+      <description>Short description of the second post.</description>
+    </item>
+  </channel>
+</rss>`;
+
+		const items = parseFeedItems(xml, "Test Blog");
+		expect(items).toHaveLength(2);
+		expect(items[0].title).toBe("First Post");
+		expect(items[0].link).toBe("https://example.com/first");
+		expect(items[0].content).toContain("Short description of the first post.");
+		expect(items[0].feedName).toBe("Test Blog");
+		expect(items[1].title).toBe("Second Post");
+	});
+
+	it("parses Atom feed entries", () => {
+		const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom Blog</title>
+  <entry>
+    <title>Atom Post</title>
+    <link rel="alternate" href="https://example.com/atom-post" />
+    <id>tag:example.com,2026:atom-post</id>
+    <summary>Summary of the atom post.</summary>
+    <published>2026-03-09T10:00:00Z</published>
+  </entry>
+</feed>`;
+
+		const items = parseFeedItems(xml, "Atom Blog");
+		expect(items).toHaveLength(1);
+		expect(items[0].title).toBe("Atom Post");
+		expect(items[0].link).toBe("https://example.com/atom-post");
+		expect(items[0].guid).toBe("tag:example.com,2026:atom-post");
+		expect(items[0].content).toContain("Summary of the atom post.");
+		expect(items[0].feedName).toBe("Atom Blog");
+	});
+
+	it("prefers content:encoded over description", () => {
+		const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <item>
+      <title>Rich Post</title>
+      <link>https://example.com/rich</link>
+      <description>Short teaser.</description>
+      <content:encoded><![CDATA[<p>Full rich content of the post with <strong>HTML</strong>.</p>]]></content:encoded>
+    </item>
+  </channel>
+</rss>`;
+
+		const items = parseFeedItems(xml, "Blog");
+		expect(items).toHaveLength(1);
+		expect(items[0].content).toContain("Full rich content of the post");
+		expect(items[0].content).not.toContain("Short teaser");
+	});
+
+	it("caps items at RSS_MAX_ITEMS_PER_FEED (5)", () => {
+		const itemsXml = Array.from({ length: 10 }, (_, i) =>
+			`<item><title>Post ${i}</title><link>https://example.com/${i}</link><description>Content ${i}</description></item>`
+		).join("\n");
+
+		const xml = `<?xml version="1.0"?><rss version="2.0"><channel>${itemsXml}</channel></rss>`;
+		const items = parseFeedItems(xml, "Blog");
+		expect(items).toHaveLength(5);
+	});
+});
+
+describe("RSS dedup key", () => {
+	it("uses rss: prefix", async () => {
+		const item: RssItem = {
+			title: "Test",
+			link: "https://example.com/test",
+			guid: "https://example.com/test",
+			content: "Content",
+			feedName: "Blog",
+		};
+		const key = await createRssDedupeKey(item);
+		expect(key).toMatch(/^rss:[a-f0-9]{64}$/);
+	});
+});
+
+describe("RSS feed processing", () => {
+	const fetchMock = vi.fn<typeof fetch>();
+
+	beforeEach(() => {
+		fetchMock.mockReset();
+		vi.stubGlobal("fetch", fetchMock);
+	});
+
+	it("skips already-processed items", async () => {
+		const feedXml = `<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>Old Post</title>
+    <link>https://example.com/old</link>
+    <description>Already seen content.</description>
+  </item>
+</channel></rss>`;
+
+		fetchMock.mockImplementation(async (input) => {
+			if (typeof input === "string" && input.includes("example.com/feed")) {
+				return new Response(feedXml, { status: 200 });
+			}
+			throw new Error(`Unexpected fetch: ${String(input)}`);
+		});
+
+		const env = createEnv({
+			RSS_FEEDS: JSON.stringify([{ url: "https://example.com/feed.xml", name: "Blog" }]),
+		});
+
+		// Pre-populate the dedup key
+		const item: RssItem = {
+			title: "Old Post",
+			link: "https://example.com/old",
+			guid: "https://example.com/old",
+			content: "Already seen content.",
+			feedName: "Blog",
+		};
+		const key = await createRssDedupeKey(item);
+		await env.PROCESSED_EMAILS.put(key, JSON.stringify({ status: "sent" }));
+
+		await processRssFeeds(env);
+
+		// Should only have fetched the feed itself, not called OpenAI or Resend
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("gracefully handles empty feed list", async () => {
+		const env = createEnv({ RSS_FEEDS: "[]" });
+		await processRssFeeds(env);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("processes new RSS items end-to-end", async () => {
+		const feedXml = `<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>New Post</title>
+    <link>https://example.com/new</link>
+    <description>Fresh content to summarize.</description>
+  </item>
+</channel></rss>`;
+
+		fetchMock.mockImplementation(async (input) => {
+			if (typeof input === "string" && input.includes("example.com/feed")) {
+				return new Response(feedXml, { status: 200 });
+			}
+			if (typeof input === "string" && input.includes("api.openai.com")) {
+				return new Response(
+					JSON.stringify({
+						output: [
+							{
+								type: "message",
+								content: [{ type: "output_text", text: "A summary of the new post." }],
+							},
+						],
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			}
+			if (typeof input === "string" && input.includes("resend.com")) {
+				return new Response(JSON.stringify({ id: "email_rss" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			throw new Error(`Unexpected fetch: ${String(input)}`);
+		});
+
+		const env = createEnv({
+			RSS_FEEDS: JSON.stringify([{ url: "https://example.com/feed.xml", name: "Test Blog" }]),
+		});
+
+		await processRssFeeds(env);
+
+		// Feed fetch + OpenAI + Resend = 3 calls
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+
+		const resendCall = fetchMock.mock.calls.find(
+			([input]) => typeof input === "string" && input.includes("resend.com"),
+		);
+		expect(resendCall).toBeTruthy();
+		const body = JSON.parse(resendCall![1]!.body as string);
+		expect(body.subject).toContain("New Post");
 	});
 });

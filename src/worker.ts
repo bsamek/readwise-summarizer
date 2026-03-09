@@ -1,3 +1,4 @@
+import { XMLParser } from "fast-xml-parser";
 import PostalMime, { type Address, type Email as ParsedEmail } from "postal-mime";
 
 export interface Env {
@@ -6,6 +7,21 @@ export interface Env {
 	EMAIL_TO: string;
 	SUMMARY_FROM: string;
 	PROCESSED_EMAILS: KVNamespace;
+	RSS_FEEDS: string;
+}
+
+export interface RssFeedConfig {
+	url: string;
+	name: string;
+}
+
+export interface RssItem {
+	title: string;
+	link: string;
+	guid: string;
+	content: string;
+	pubDate?: string;
+	feedName: string;
 }
 
 export interface EmailMetadata {
@@ -17,6 +33,10 @@ export interface EmailMetadata {
 	html?: string;
 	text?: string;
 }
+
+const RSS_DEDUPE_PREFIX = "rss:";
+const RSS_FETCH_TIMEOUT_MS = 10_000;
+const RSS_MAX_ITEMS_PER_FEED = 5;
 
 const HEALTH_PATH = "/healthz";
 // App-side guardrail for cost and latency; GPT-5.4 can handle far more context.
@@ -80,6 +100,14 @@ export default {
 		}
 
 		return new Response("Not found", { status: 404 });
+	},
+
+	async scheduled(
+		_event: ScheduledEvent,
+		env: Env,
+		ctx: ExecutionContext,
+	): Promise<void> {
+		ctx.waitUntil(processRssFeeds(env).catch(console.error));
 	},
 
 	async email(
@@ -669,6 +697,145 @@ function escapeHtml(value: string): string {
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&#39;");
+}
+
+export function parseRssFeeds(env: Env): RssFeedConfig[] {
+	if (!env.RSS_FEEDS) return [];
+	const feeds = JSON.parse(env.RSS_FEEDS) as RssFeedConfig[];
+	return feeds.filter((f) => f.url && f.name);
+}
+
+export async function fetchFeed(config: RssFeedConfig): Promise<string> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), RSS_FETCH_TIMEOUT_MS);
+	try {
+		const resp = await fetch(config.url, {
+			headers: { "User-Agent": "readwise-summary-worker/1.0" },
+			signal: controller.signal,
+		});
+		if (!resp.ok) {
+			throw new Error(`Feed fetch failed: ${resp.status} ${config.url}`);
+		}
+		return await resp.text();
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+export function parseFeedItems(xml: string, feedName: string): RssItem[] {
+	const parser = new XMLParser({
+		ignoreAttributes: false,
+		trimValues: true,
+	});
+	const doc = parser.parse(xml);
+
+	const items: RssItem[] = [];
+
+	// RSS 2.0
+	const rssItems = doc?.rss?.channel?.item;
+	if (rssItems) {
+		const list = Array.isArray(rssItems) ? rssItems : [rssItems];
+		for (const entry of list.slice(0, RSS_MAX_ITEMS_PER_FEED)) {
+			const rawContent =
+				entry["content:encoded"] || entry.description || "";
+			items.push({
+				title: entry.title || "Untitled",
+				link: entry.link || "",
+				guid: entry.guid?.["#text"] || entry.guid || entry.link || "",
+				content: collapseWhitespace(stripHtml(String(rawContent))),
+				pubDate: entry.pubDate,
+				feedName,
+			});
+		}
+		return items;
+	}
+
+	// Atom
+	const atomEntries = doc?.feed?.entry;
+	if (atomEntries) {
+		const list = Array.isArray(atomEntries) ? atomEntries : [atomEntries];
+		for (const entry of list.slice(0, RSS_MAX_ITEMS_PER_FEED)) {
+			const rawContent =
+				entry.content?.["#text"] ||
+				entry.content ||
+				entry.summary?.["#text"] ||
+				entry.summary ||
+				"";
+			const link =
+				(Array.isArray(entry.link)
+					? entry.link.find(
+							(l: Record<string, string>) =>
+								l["@_rel"] === "alternate" || !l["@_rel"],
+						)?.["@_href"]
+					: entry.link?.["@_href"]) || "";
+			items.push({
+				title: entry.title?.["#text"] || entry.title || "Untitled",
+				link,
+				guid: entry.id || link || "",
+				content: collapseWhitespace(stripHtml(String(rawContent))),
+				pubDate: entry.published || entry.updated,
+				feedName,
+			});
+		}
+	}
+
+	return items;
+}
+
+export async function createRssDedupeKey(item: RssItem): Promise<string> {
+	return `${RSS_DEDUPE_PREFIX}${await sha256Hex(item.guid || item.link)}`;
+}
+
+export async function processRssFeeds(env: Env): Promise<void> {
+	const feeds = parseRssFeeds(env);
+	if (feeds.length === 0) return;
+
+	for (const feedConfig of feeds) {
+		try {
+			const xml = await fetchFeed(feedConfig);
+			const items = parseFeedItems(xml, feedConfig.name);
+
+			for (const item of items) {
+				if (!item.content) continue;
+
+				const dedupeKey = await createRssDedupeKey(item);
+				if (await hasProcessedEmail(dedupeKey, env.PROCESSED_EMAILS)) {
+					console.log("Skipping already-processed RSS item", {
+						title: item.title,
+						feed: item.feedName,
+					});
+					continue;
+				}
+
+				const summary = await summarizeEmail(
+					{
+						subject: item.title,
+						sender: item.feedName,
+						content: item.content,
+					},
+					env.OPENAI_API_KEY,
+				);
+
+				await sendSummaryEmail(
+					{
+						subject: item.title,
+						sender: item.feedName,
+						summary,
+					},
+					env,
+					dedupeKey,
+				);
+
+				await recordProcessedEmail(dedupeKey, env.PROCESSED_EMAILS, {
+					status: "sent",
+					title: item.title,
+					feed: item.feedName,
+				});
+			}
+		} catch (error) {
+			console.error(`Error processing feed ${feedConfig.name}:`, error);
+		}
+	}
 }
 
 async function sendResendEmail(
