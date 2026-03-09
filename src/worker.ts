@@ -47,7 +47,7 @@ const MAX_SUMMARY_INPUT_CHARS = 80_000;
 const DEDUPE_TTL_SECONDS = 60 * 60 * 24 * 7;
 const SUMMARY_PREFIX = "Newsletter Summary";
 const SUMMARY_MODEL = "gpt-5.4";
-const HAIKU_MODEL = "claude-haiku-4-5";
+const CLAUDE_MODEL = "claude-sonnet-4-6";
 const SUMMARY_MAX_OUTPUT_TOKENS = 1024;
 
 const FOOTER_BREAK_PATTERNS = [
@@ -471,7 +471,7 @@ ${input.content.slice(0, MAX_SUMMARY_INPUT_CHARS)}`,
 	return summary;
 }
 
-export async function summarizeWithHaiku(
+export async function summarizeWithClaude(
 	input: {
 		subject: string;
 		sender: string;
@@ -487,7 +487,7 @@ export async function summarizeWithHaiku(
 			"Content-Type": "application/json",
 		},
 		body: JSON.stringify({
-			model: HAIKU_MODEL,
+			model: CLAUDE_MODEL,
 			max_tokens: SUMMARY_MAX_OUTPUT_TOKENS,
 			system:
 				"Summarize the following forwarded newsletter or article email in 3-5 concise prose paragraphs. Write in plain prose with no headers, no labels, and no bullet points.",
@@ -528,12 +528,12 @@ export async function summarizeDual(
 	},
 	openaiApiKey: string,
 	anthropicApiKey: string,
-): Promise<{ gptSummary: string; haikuSummary: string }> {
-	const [gptSummary, haikuSummary] = await Promise.all([
+): Promise<{ gptSummary: string; claudeSummary: string }> {
+	const [gptSummary, claudeSummary] = await Promise.all([
 		summarizeEmail(input, openaiApiKey),
-		summarizeWithHaiku(input, anthropicApiKey),
+		summarizeWithClaude(input, anthropicApiKey),
 	]);
-	return { gptSummary, haikuSummary };
+	return { gptSummary, claudeSummary };
 }
 
 export async function sendSummaryEmail(
@@ -541,7 +541,7 @@ export async function sendSummaryEmail(
 		subject: string;
 		sender: string;
 		gptSummary: string;
-		haikuSummary: string;
+		claudeSummary: string;
 	},
 	env: Env,
 	dedupeKey: string,
@@ -563,7 +563,7 @@ export function renderSummaryHtml(input: {
 	subject: string;
 	sender: string;
 	gptSummary: string;
-	haikuSummary: string;
+	claudeSummary: string;
 }): string {
 	const renderParagraphs = (text: string) =>
 		text
@@ -586,8 +586,8 @@ export function renderSummaryHtml(input: {
       <h2 style="margin:0 0 12px; font-size:16px; letter-spacing:0.06em; text-transform:uppercase; color:#9a6b2f;">GPT-5.4</h2>
       ${renderParagraphs(input.gptSummary)}
       <hr style="border:none; border-top:1px solid #e5dccf; margin:24px 0;">
-      <h2 style="margin:0 0 12px; font-size:16px; letter-spacing:0.06em; text-transform:uppercase; color:#9a6b2f;">Haiku 4.5</h2>
-      ${renderParagraphs(input.haikuSummary)}
+      <h2 style="margin:0 0 12px; font-size:16px; letter-spacing:0.06em; text-transform:uppercase; color:#9a6b2f;">Sonnet 4.6</h2>
+      ${renderParagraphs(input.claudeSummary)}
     </div>
   </body>
 </html>`;
@@ -597,7 +597,7 @@ export function renderSummaryText(input: {
 	subject: string;
 	sender: string;
 	gptSummary: string;
-	haikuSummary: string;
+	claudeSummary: string;
 }): string {
 	return [
 		"## GPT-5.4",
@@ -606,9 +606,9 @@ export function renderSummaryText(input: {
 		"",
 		"---",
 		"",
-		"## Haiku 4.5",
+		"## Sonnet 4.6",
 		"",
-		input.haikuSummary.trim(),
+		input.claudeSummary.trim(),
 		"",
 		"---",
 		`From: ${input.sender}`,
