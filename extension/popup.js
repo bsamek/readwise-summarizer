@@ -48,13 +48,7 @@ summarizeBtn.addEventListener("click", () => {
       return;
     }
 
-    if (response.status === "duplicate") {
-      setStatus("Already summarized.", "info");
-    } else if (response.status === "sent") {
-      setStatus("Summary sent!", "success");
-    } else {
-      setStatus("Done.", "success");
-    }
+    setStatus("Summary sent!", "success");
   });
 });
 

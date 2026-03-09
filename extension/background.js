@@ -40,7 +40,8 @@ async function handleSummarize() {
 
   const apiUrl = settings.workerUrl.replace(/\/+$/, "") + "/api/save";
 
-  const resp = await fetch(apiUrl, {
+  // Fire and forget — don't block the popup on the worker response
+  fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -52,12 +53,7 @@ async function handleSummarize() {
       content: extraction.content,
       siteName: extraction.siteName,
     }),
-  });
+  }).catch((err) => console.error("Worker request failed:", err));
 
-  if (!resp.ok) {
-    const text = await resp.text();
-    return { error: `Worker error: ${resp.status} ${text}` };
-  }
-
-  return await resp.json();
+  return { status: "sent" };
 }
