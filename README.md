@@ -5,9 +5,10 @@ A Cloudflare Worker that summarizes forwarded newsletter emails, RSS feed articl
 ## How It Works
 
 ```text
-Gmail Filter -> Cloudflare Email Routing -> Worker -> Anthropic -> Resend -> Gmail
-Cron (every 30 min)  -> RSS Feeds        -> Worker -> Anthropic -> Resend -> Gmail
-Chrome Extension -> Readability.js       -> Worker -> Anthropic -> Resend -> Gmail
+Gmail Filter     -> Cloudflare Email Routing -> Worker -> Anthropic -> Resend -> Gmail
+Cron (every 30 min)  -> RSS Feeds           -> Worker -> Anthropic -> Resend -> Gmail
+Chrome Extension -> Readability.js          -> Worker -> Anthropic -> Resend -> Gmail
+iOS Shortcut     -> Safari JS extraction    -> Worker -> Anthropic -> Resend -> Gmail
 ```
 
 **Email path:** Gmail keeps the original newsletter in your inbox. A Gmail filter forwards matching senders to a Cloudflare-managed email address, the Worker parses the message body, summarizes with `claude-sonnet-4-6`, and Resend sends the summary back to you.
@@ -15,6 +16,8 @@ Chrome Extension -> Readability.js       -> Worker -> Anthropic -> Resend -> Gma
 **RSS path:** A Cloudflare Cron Trigger runs every 30 minutes, fetches configured RSS/Atom feeds, extracts new articles, summarizes them, and emails the summaries via Resend. Already-processed items are skipped using the same KV dedup store.
 
 **Chrome extension path:** A Manifest V3 Chrome extension lets you save any article — including paywalled pages you're logged into — by clicking "Summarize This Page." The extension uses Mozilla's Readability.js to extract the article content in-browser, then POSTs it to the Worker's `POST /api/save` endpoint with Bearer token auth. The Worker deduplicates, summarizes, and emails the result.
+
+**iOS Shortcut path:** An iOS Shortcut appears in Safari's share sheet, runs JavaScript on the current page to extract the article text (works with paywalled content since it runs in your authenticated session), and POSTs it to the same `POST /api/save` endpoint. No app or extension to install — just a Shortcut.
 
 ## Setup
 
@@ -116,7 +119,38 @@ npm test
 3. Click the extension icon, enter your Worker URL (e.g. `https://tldr.your-domain.workers.dev`) and the `API_KEY` you set above, then click **Save Settings**.
 4. Navigate to any article page and click **Summarize This Page**.
 
-### 8. Manual test
+### 8. Set up the iOS Shortcut (optional)
+
+This adds a "Summarize This Page" option to Safari's share sheet on iOS. Because the JavaScript runs inside your Safari session, it can extract full article text from paywalled pages you're logged into.
+
+1. Open the **Shortcuts** app on your iPhone or iPad.
+2. Tap **+** to create a new shortcut. Tap the name at the top and choose **Rename** to give it a name like "Summarize This Page."
+3. Tap the name again and choose **Add to Share Sheet**. Under **Share Sheet Types**, deselect everything except **Safari web pages**.
+4. Add a **Run JavaScript on Safari Web Page** action and paste this script:
+
+   ```javascript
+   const article = {
+     url: document.URL,
+     title: document.title,
+     content: document.body.innerText.substring(0, 80000),
+     siteName:
+       (document.querySelector('meta[property="og:site_name"]') || {}).content ||
+       window.location.hostname
+   };
+   completion(article);
+   ```
+
+5. Add a **Get Contents of URL** action and configure it:
+   - **URL:** `https://tldr.your-domain.workers.dev/api/save` (your Worker URL)
+   - **Method:** POST
+   - **Headers:** add `Authorization` with value `Bearer <your API_KEY>`
+   - **Request Body:** JSON — add keys `url`, `title`, `content`, and `siteName`, setting each value to the corresponding field from the **Run JavaScript on Safari Web Page** output (use the variable picker).
+
+6. Optionally add a **Show Notification** action with the text "Summary sent!" so you get confirmation.
+
+To use it: open any article in Safari, tap the **Share** button, and select **Summarize This Page** from the share sheet.
+
+### 9. Manual test
 
 Forward one newsletter sender to the Cloudflare address and confirm:
 
