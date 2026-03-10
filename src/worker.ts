@@ -535,8 +535,8 @@ export function renderSummaryHtml(input: {
 			.join("");
 
 	const articleLink = input.articleUrl
-		? `<p style="margin:0; line-height:1.7;"><a href="${escapeHtml(input.articleUrl)}" style="color:#9a6b2f;">Read original</a></p>`
-		: "";
+		? `<p style="margin:0 0 24px; line-height:1.6; color:#4b5563;">From ${escapeHtml(input.sender)} · <a href="${escapeHtml(input.articleUrl)}" style="color:#9a6b2f;">Read original</a></p>`
+		: `<p style="margin:0 0 24px; line-height:1.6; color:#4b5563;">From ${escapeHtml(input.sender)}</p>`;
 
 	return `<!doctype html>
 <html lang="en">
@@ -544,8 +544,8 @@ export function renderSummaryHtml(input: {
     <div style="max-width:680px; margin:0 auto; background:#fffdf8; border:1px solid #e5dccf; border-radius:16px; padding:32px;">
       <p style="margin:0 0 12px; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:#9a6b2f;">${summaryPrefix}</p>
       <h1 style="margin:0 0 12px; font-size:30px; line-height:1.2; color:#111827;">${escapeHtml(input.subject)}</h1>
-      <p style="margin:0 0 24px; line-height:1.6; color:#4b5563;">From ${escapeHtml(input.sender)}</p>
-      ${renderParagraphs(input.summary)}${articleLink}
+      ${articleLink}
+      ${renderParagraphs(input.summary)}
     </div>
   </body>
 </html>`;
@@ -557,16 +557,15 @@ export function renderSummaryText(input: {
 	summary: string;
 	articleUrl?: string;
 }): string {
-	const lines = [
-		input.summary.trim(),
-		"",
+	const header = input.articleUrl
+		? `From: ${input.sender} | Link: ${input.articleUrl}`
+		: `From: ${input.sender}`;
+	return [
+		header,
 		"---",
-		`From: ${input.sender}`,
-	];
-	if (input.articleUrl) {
-		lines.push(`Link: ${input.articleUrl}`);
-	}
-	return lines.join("\n");
+		"",
+		input.summary.trim(),
+	].join("\n");
 }
 
 export function renderForwardingConfirmationHtml(input: {
