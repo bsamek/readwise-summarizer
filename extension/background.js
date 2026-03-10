@@ -19,11 +19,14 @@ async function handleSummarize() {
     return { error: "No active tab found." };
   }
 
-  // Inject Readability.js then content.js into the active tab
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    files: ["lib/Readability.js", "content.js"],
-  });
+  // Run script injection and settings fetch in parallel
+  const [results, settings] = await Promise.all([
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["lib/Readability.js", "content.js"],
+    }),
+    chrome.storage.sync.get(["workerUrl", "apiKey"]),
+  ]);
 
   const extraction = results?.[results.length - 1]?.result;
 
@@ -31,16 +34,14 @@ async function handleSummarize() {
     return { error: extraction?.error || "Extraction returned no result." };
   }
 
-  // Get settings from storage
-  const settings = await chrome.storage.sync.get(["workerUrl", "apiKey"]);
-
   if (!settings.workerUrl || !settings.apiKey) {
     return { error: "Please configure Worker URL and API key in settings." };
   }
 
   const apiUrl = settings.workerUrl.replace(/\/+$/, "") + "/api/save";
 
-  const resp = await fetch(apiUrl, {
+  // Fire and forget — don't block the popup on the worker response
+  fetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -52,12 +53,7 @@ async function handleSummarize() {
       content: extraction.content,
       siteName: extraction.siteName,
     }),
-  });
+  }).catch((err) => console.error("Worker request failed:", err));
 
-  if (!resp.ok) {
-    const text = await resp.text();
-    return { error: `Worker error: ${resp.status} ${text}` };
-  }
-
-  return await resp.json();
+  return { status: "sent" };
 }
