@@ -9,6 +9,8 @@ import {
 	parseFeedItems,
 	processIncomingEmail,
 	processRssFeeds,
+	renderSummaryHtml,
+	renderSummaryText,
 	sendPushoverNotification,
 	sendSummaryEmail,
 	type EmailMetadata,
@@ -783,5 +785,220 @@ describe("Pushover notifications", () => {
 		// Only Resend, no Pushover
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		expect(fetchMock.mock.calls[0][0]).toContain("resend.com");
+	});
+
+	it("includes articleUrl in Pushover notification when provided", async () => {
+		fetchMock.mockImplementation(async (input) => {
+			if (typeof input === "string" && input.includes("resend.com")) {
+				return new Response(JSON.stringify({ id: "email_1" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			if (typeof input === "string" && input.includes("pushover.net")) {
+				return new Response(JSON.stringify({ status: 1 }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			throw new Error(`Unexpected fetch: ${String(input)}`);
+		});
+
+		const env = createEnv({
+			PUSHOVER_USER_KEY: "user-key",
+			PUSHOVER_API_TOKEN: "api-token",
+		});
+
+		await sendSummaryEmail(
+			{
+				subject: "Test Article",
+				sender: "blog@example.com",
+				summary: "A summary.",
+				articleUrl: "https://example.com/article",
+			},
+			env,
+			"dedup-key-pushover-url",
+		);
+
+		const pushoverCall = fetchMock.mock.calls.find(
+			([input]) => typeof input === "string" && input.includes("pushover.net"),
+		);
+		expect(pushoverCall).toBeTruthy();
+		const body = JSON.parse(pushoverCall![1]!.body as string);
+		expect(body.url).toBe("https://example.com/article");
+	});
+});
+
+describe("article links in summaries", () => {
+	it("includes article link in HTML when articleUrl is provided", () => {
+		const html = renderSummaryHtml({
+			subject: "Test Article",
+			sender: "blog@example.com",
+			summary: "A summary paragraph.",
+			articleUrl: "https://example.com/article",
+		});
+
+		expect(html).toContain("https://example.com/article");
+		expect(html).toContain("Read original");
+	});
+
+	it("omits article link in HTML when articleUrl is not provided", () => {
+		const html = renderSummaryHtml({
+			subject: "Test Article",
+			sender: "blog@example.com",
+			summary: "A summary paragraph.",
+		});
+
+		expect(html).not.toContain("Read original");
+	});
+
+	it("includes article link in text when articleUrl is provided", () => {
+		const text = renderSummaryText({
+			subject: "Test Article",
+			sender: "blog@example.com",
+			summary: "A summary paragraph.",
+			articleUrl: "https://example.com/article",
+		});
+
+		expect(text).toContain("Link: https://example.com/article");
+	});
+
+	it("omits article link in text when articleUrl is not provided", () => {
+		const text = renderSummaryText({
+			subject: "Test Article",
+			sender: "blog@example.com",
+			summary: "A summary paragraph.",
+		});
+
+		expect(text).not.toContain("Link:");
+	});
+
+	it("extension/iOS summary emails include the article link", async () => {
+		const fetchMock = vi.fn<typeof fetch>();
+		vi.stubGlobal("fetch", fetchMock);
+
+		fetchMock.mockImplementation(async (input) => {
+			if (typeof input === "string" && input.includes("api.anthropic.com")) {
+				return new Response(
+					JSON.stringify({
+						content: [{ type: "text", text: "Claude summary." }],
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			}
+			if (typeof input === "string" && input.includes("resend.com")) {
+				return new Response(JSON.stringify({ id: "email_ext" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			throw new Error(`Unexpected fetch: ${String(input)}`);
+		});
+
+		const env = createEnv();
+		const req = createSaveRequest(
+			{
+				url: "https://example.com/ext-article",
+				title: "Extension Article",
+				content: "Full article text.",
+				siteName: "Example Blog",
+			},
+			"test-api-key-1234",
+		);
+
+		await handleApiSave(req, env);
+
+		const resendCall = fetchMock.mock.calls.find(
+			([input]) => typeof input === "string" && input.includes("resend.com"),
+		);
+		const resendBody = JSON.parse(resendCall![1]!.body as string);
+		expect(resendBody.html).toContain("https://example.com/ext-article");
+		expect(resendBody.html).toContain("Read original");
+		expect(resendBody.text).toContain("Link: https://example.com/ext-article");
+	});
+
+	it("RSS summary emails include the article link", async () => {
+		const fetchMock = vi.fn<typeof fetch>();
+		vi.stubGlobal("fetch", fetchMock);
+
+		const feedXml = `<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>RSS Post</title>
+    <link>https://example.com/rss-article</link>
+    <description>RSS content to summarize.</description>
+  </item>
+</channel></rss>`;
+
+		fetchMock.mockImplementation(async (input) => {
+			if (typeof input === "string" && input.includes("example.com/feed")) {
+				return new Response(feedXml, { status: 200 });
+			}
+			if (typeof input === "string" && input.includes("api.anthropic.com")) {
+				return new Response(
+					JSON.stringify({
+						content: [{ type: "text", text: "Claude RSS summary." }],
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			}
+			if (typeof input === "string" && input.includes("resend.com")) {
+				return new Response(JSON.stringify({ id: "email_rss" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			throw new Error(`Unexpected fetch: ${String(input)}`);
+		});
+
+		const env = createEnv({
+			RSS_FEEDS: JSON.stringify([{ url: "https://example.com/feed.xml", name: "Test Blog" }]),
+		});
+
+		await processRssFeeds(env);
+
+		const resendCall = fetchMock.mock.calls.find(
+			([input]) => typeof input === "string" && input.includes("resend.com"),
+		);
+		const resendBody = JSON.parse(resendCall![1]!.body as string);
+		expect(resendBody.html).toContain("https://example.com/rss-article");
+		expect(resendBody.html).toContain("Read original");
+		expect(resendBody.text).toContain("Link: https://example.com/rss-article");
+	});
+
+	it("email summary emails do NOT include an article link", async () => {
+		const fetchMock = vi.fn<typeof fetch>();
+		vi.stubGlobal("fetch", fetchMock);
+
+		fetchMock.mockImplementation(async (input) => {
+			if (typeof input === "string" && input.includes("api.anthropic.com")) {
+				return new Response(
+					JSON.stringify({
+						content: [{ type: "text", text: "Claude email summary." }],
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			}
+			if (typeof input === "string" && input.includes("resend.com")) {
+				return new Response(JSON.stringify({ id: "email_fwd" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			throw new Error(`Unexpected fetch: ${String(input)}`);
+		});
+
+		const env = createEnv();
+		const rawEmail = createRawEmail();
+		const message = createForwardableEmailMessage(rawEmail);
+
+		await processIncomingEmail(message, env);
+
+		const resendCall = fetchMock.mock.calls.find(
+			([input]) => typeof input === "string" && input.includes("resend.com"),
+		);
+		const resendBody = JSON.parse(resendCall![1]!.body as string);
+		expect(resendBody.html).not.toContain("Read original");
+		expect(resendBody.text).not.toContain("Link:");
 	});
 });

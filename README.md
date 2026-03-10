@@ -19,6 +19,8 @@ iOS Shortcut     -> Safari JS extraction    -> Worker -> Anthropic -> Resend -> 
 
 **iOS Shortcut path:** An iOS Shortcut appears in Safari's share sheet, runs JavaScript on the current page to extract the article text (works with paywalled content since it runs in your authenticated session), and POSTs it to the same `POST /api/save` endpoint. No app or extension to install — just a Shortcut.
 
+**Article links:** Summary emails from RSS feeds, the Chrome extension, and iOS Shortcuts include a "Read original" link back to the source article. Forwarded email summaries omit the link since newsletters don't have a single canonical URL. When Pushover is configured, tapping a push notification opens the original article directly.
+
 ## Setup
 
 ### 1. Install and deploy

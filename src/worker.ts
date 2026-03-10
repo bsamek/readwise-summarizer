@@ -214,6 +214,7 @@ export async function handleApiSave(
 			subject: body.title,
 			sender,
 			summary,
+			articleUrl: body.url,
 		},
 		env,
 		dedupeKey,
@@ -456,6 +457,7 @@ export async function sendSummaryEmail(
 		subject: string;
 		sender: string;
 		summary: string;
+		articleUrl?: string;
 	},
 	env: Env,
 	dedupeKey: string,
@@ -478,6 +480,7 @@ export async function sendSummaryEmail(
 			{
 				title: `${summaryPrefix}: ${sanitizeSubject(input.subject)}`,
 				message: input.summary.slice(0, 1024),
+				url: input.articleUrl,
 			},
 			env.PUSHOVER_USER_KEY,
 			env.PUSHOVER_API_TOKEN,
@@ -488,19 +491,23 @@ export async function sendSummaryEmail(
 }
 
 export async function sendPushoverNotification(
-	input: { title: string; message: string },
+	input: { title: string; message: string; url?: string },
 	userKey: string,
 	apiToken: string,
 ): Promise<void> {
+	const body: Record<string, string> = {
+		token: apiToken,
+		user: userKey,
+		title: input.title,
+		message: input.message,
+	};
+	if (input.url) {
+		body.url = input.url;
+	}
 	const resp = await fetch("https://api.pushover.net/1/messages.json", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			token: apiToken,
-			user: userKey,
-			title: input.title,
-			message: input.message,
-		}),
+		body: JSON.stringify(body),
 	});
 
 	if (!resp.ok) {
@@ -514,6 +521,7 @@ export function renderSummaryHtml(input: {
 	subject: string;
 	sender: string;
 	summary: string;
+	articleUrl?: string;
 }, summaryPrefix: string = NEWSLETTER_SUMMARY_PREFIX): string {
 	const renderParagraphs = (text: string) =>
 		text
@@ -526,6 +534,10 @@ export function renderSummaryHtml(input: {
 			)
 			.join("");
 
+	const articleLink = input.articleUrl
+		? `<p style="margin:0; line-height:1.7;"><a href="${escapeHtml(input.articleUrl)}" style="color:#9a6b2f;">Read original</a></p>`
+		: "";
+
 	return `<!doctype html>
 <html lang="en">
   <body style="margin:0; padding:24px; background:#f4f1ea; font-family: Georgia, 'Times New Roman', serif; color:#111827;">
@@ -533,7 +545,7 @@ export function renderSummaryHtml(input: {
       <p style="margin:0 0 12px; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:#9a6b2f;">${summaryPrefix}</p>
       <h1 style="margin:0 0 12px; font-size:30px; line-height:1.2; color:#111827;">${escapeHtml(input.subject)}</h1>
       <p style="margin:0 0 24px; line-height:1.6; color:#4b5563;">From ${escapeHtml(input.sender)}</p>
-      ${renderParagraphs(input.summary)}
+      ${renderParagraphs(input.summary)}${articleLink}
     </div>
   </body>
 </html>`;
@@ -543,13 +555,18 @@ export function renderSummaryText(input: {
 	subject: string;
 	sender: string;
 	summary: string;
+	articleUrl?: string;
 }): string {
-	return [
+	const lines = [
 		input.summary.trim(),
 		"",
 		"---",
 		`From: ${input.sender}`,
-	].join("\n");
+	];
+	if (input.articleUrl) {
+		lines.push(`Link: ${input.articleUrl}`);
+	}
+	return lines.join("\n");
 }
 
 export function renderForwardingConfirmationHtml(input: {
@@ -943,6 +960,7 @@ export async function processRssFeeds(env: Env): Promise<void> {
 						subject: item.title,
 						sender: item.feedName,
 						summary,
+						articleUrl: item.link,
 					},
 					env,
 					dedupeKey,
