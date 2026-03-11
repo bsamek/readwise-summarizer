@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TLDR Web App – UI Design Mockups</title>
+  <style>
+    :root {
+      --sand-50: #faf9f6;
+      --sand-100: #f4f1ea;
+      --sand-200: #e5dccf;
+      --sand-300: #d4c8b5;
+      --sand-400: #b8a68d;
+      --gold: #9a6b2f;
+      --gold-light: #c4944a;
+      --ink-900: #111827;
+      --ink-700: #374151;
+      --ink-500: #6b7280;
+      --ink-400: #9ca3af;
+      --ink-300: #d1d5db;
+      --white: #fffdf8;
+      --green: #059669;
+      --green-bg: #ecfdf5;
+      --red: #dc2626;
+      --red-bg: #fef2f2;
+      --blue: #2563eb;
+      --blue-bg: #eff6ff;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.04);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04);
+      --font-serif: Georgia, 'Times New Roman', serif;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--sand-100);
+      color: var(--ink-900);
+      line-height: 1.5;
+    }
+
+    /* ── Concept Switcher ── */
+    .concept-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--ink-900);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .concept-nav h1 {
+      color: var(--gold);
+      font-family: var(--font-serif);
+      font-size: 18px;
+      margin-right: auto;
+    }
+    .concept-btn {
+      background: transparent;
+      border: 1px solid var(--ink-500);
+      color: var(--ink-400);
+      padding: 6px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .concept-btn:hover { border-color: var(--gold-light); color: var(--gold-light); }
+    .concept-btn.active {
+      background: var(--gold);
+      border-color: var(--gold);
+      color: white;
+    }
+    .concept { display: none; }
+    .concept.active { display: block; }
+
+    /* ── Design Notes Banner ── */
+    .design-notes {
+      max-width: 960px;
+      margin: 24px auto;
+      padding: 20px 24px;
+      background: var(--white);
+      border: 1px solid var(--sand-200);
+      border-radius: var(--radius);
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--ink-700);
+    }
+    .design-notes h2 {
+      font-family: var(--font-serif);
+      font-size: 20px;
+      margin-bottom: 8px;
+      color: var(--ink-900);
+    }
+    .design-notes ul { margin: 8px 0 0 20px; }
+    .design-notes li { margin-bottom: 4px; }
+    .design-notes strong { color: var(--ink-900); }
+    .design-notes em { color: var(--gold); font-style: normal; font-weight: 600; }
+
+    /* ════════════════════════════════════════
+       CONCEPT A – Card Stream
+       ════════════════════════════════════════ */
+    .a-shell {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 0 16px 48px;
+    }
+    .a-header {
+      padding: 24px 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .a-header h1 {
+      font-family: var(--font-serif);
+      font-size: 28px;
+      color: var(--ink-900);
+    }
+    .a-badge {
+      background: var(--gold);
+      color: white;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 12px;
+    }
+    .a-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--sand-200);
+      padding-bottom: 0;
+    }
+    .a-tab {
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--ink-500);
+      background: none;
+      border: none;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all 0.15s;
+    }
+    .a-tab:hover { color: var(--ink-700); }
+    .a-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+    .a-tab .count {
+      font-size: 11px;
+      background: var(--sand-200);
+      padding: 1px 7px;
+      border-radius: 8px;
+      margin-left: 6px;
+    }
+    .a-tab.active .count { background: rgba(154,107,47,0.15); color: var(--gold); }
+
+    .a-card {
+      background: var(--white);
+      border: 1px solid var(--sand-200);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+      transition: box-shadow 0.2s;
+    }
+    .a-card:hover { box-shadow: var(--shadow-md); }
+    .a-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: var(--ink-500);
+    }
+    .a-source-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .a-source-badge.newsletter { background: #fef3c7; color: #92400e; }
+    .a-source-badge.rss { background: #dbeafe; color: #1e40af; }
+    .a-source-badge.extension { background: #e0e7ff; color: #3730a3; }
+    .a-card-title {
+      font-family: var(--font-serif);
+      font-size: 22px;
+      line-height: 1.3;
+      margin-bottom: 4px;
+      color: var(--ink-900);
+    }
+    .a-card-sender {
+      font-size: 14px;
+      color: var(--ink-500);
+      margin-bottom: 16px;
+    }
+    .a-card-summary {
+      font-family: var(--font-serif);
+      font-size: 15px;
+      line-height: 1.75;
+      color: var(--ink-700);
+      margin-bottom: 20px;
+    }
+    .a-card-summary p { margin-bottom: 12px; }
+    .a-card-summary p:last-child { margin-bottom: 0; }
+    .a-card-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-top: 16px;
+      border-top: 1px solid var(--sand-200);
+    }
+    .a-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid var(--sand-200);
+      background: var(--sand-50);
+      color: var(--ink-700);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .a-btn:hover { background: var(--sand-200); }
+    .a-btn.primary {
+      background: var(--gold);
+      color: white;
+      border-color: var(--gold);
+    }
+    .a-btn.primary:hover { background: var(--gold-light); }
+    .a-btn.save { border-color: var(--blue); color: var(--blue); }
+    .a-btn.save:hover { background: var(--blue-bg); }
+    .a-btn.archive { border-color: var(--green); color: var(--green); }
+    .a-btn.archive:hover { background: var(--green-bg); }
+    .a-btn.listen { border-color: var(--ink-400); color: var(--ink-700); }
+    .a-btn.listen:hover { background: var(--sand-100); }
+
+    /* Read later card variant */
+    .a-card.read-later { border-left: 3px solid var(--blue); }
+    .a-card.read-later .a-card-summary { display: none; }
+
+    /* ════════════════════════════════════════
+       CONCEPT B – Two-Pane (Mail Client)
+       ════════════════════════════════════════ */
+    .b-layout {
+      display: grid;
+      grid-template-columns: 220px 340px 1fr;
+      height: calc(100vh - 52px);
+      overflow: hidden;
+    }
+    .b-sidebar {
+      background: var(--ink-900);
+      padding: 20px 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .b-sidebar-brand {
+      font-family: var(--font-serif);
+      font-size: 22px;
+      color: var(--gold);
+      padding: 0 20px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 12px;
+    }
+    .b-sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      font-size: 14px;
+      color: var(--ink-400);
+      cursor: pointer;
+      transition: all 0.15s;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+    .b-sidebar-item:hover { background: rgba(255,255,255,0.05); color: white; }
+    .b-sidebar-item.active { background: rgba(154,107,47,0.2); color: var(--gold); }
+    .b-sidebar-item .icon { font-size: 16px; width: 20px; text-align: center; }
+    .b-sidebar-count {
+      margin-left: auto;
+      font-size: 11px;
+      background: rgba(255,255,255,0.1);
+      padding: 1px 8px;
+      border-radius: 8px;
+    }
+    .b-sidebar-item.active .b-sidebar-count { background: rgba(154,107,47,0.3); }
+
+    .b-list {
+      background: var(--sand-50);
+      border-right: 1px solid var(--sand-200);
+      overflow-y: auto;
+    }
+    .b-list-header {
+      padding: 16px 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-500);
+      border-bottom: 1px solid var(--sand-200);
+      position: sticky;
+      top: 0;
+      background: var(--sand-50);
+    }
+    .b-list-item {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--sand-200);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .b-list-item:hover { background: var(--sand-100); }
+    .b-list-item.selected { background: rgba(154,107,47,0.08); border-left: 3px solid var(--gold); }
+    .b-list-item.unread .b-list-title { font-weight: 700; }
+    .b-list-source {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-500);
+      margin-bottom: 4px;
+    }
+    .b-list-title {
+      font-family: var(--font-serif);
+      font-size: 15px;
+      line-height: 1.3;
+      margin-bottom: 4px;
+      color: var(--ink-900);
+    }
+    .b-list-preview {
+      font-size: 13px;
+      color: var(--ink-500);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .b-list-time {
+      font-size: 11px;
+      color: var(--ink-400);
+      margin-top: 6px;
+    }
+
+    .b-reader {
+      background: var(--sand-100);
+      overflow-y: auto;
+      display: flex;
+      justify-content: center;
+      padding: 32px;
+    }
+    .b-reader-inner {
+      max-width: 640px;
+      width: 100%;
+    }
+    .b-reader-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .b-reader-card {
+      background: var(--white);
+      border: 1px solid var(--sand-200);
+      border-radius: var(--radius);
+      padding: 32px;
+      box-shadow: var(--shadow);
+    }
+    .b-reader-label {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+    .b-reader-title {
+      font-family: var(--font-serif);
+      font-size: 28px;
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+    .b-reader-meta {
+      font-size: 14px;
+      color: var(--ink-500);
+      margin-bottom: 24px;
+    }
+    .b-reader-meta a { color: var(--gold); text-decoration: none; }
+    .b-reader-meta a:hover { text-decoration: underline; }
+    .b-reader-body {
+      font-family: var(--font-serif);
+      font-size: 16px;
+      line-height: 1.8;
+      color: var(--ink-700);
+    }
+    .b-reader-body p { margin-bottom: 16px; }
+
+    /* ════════════════════════════════════════
+       CONCEPT C – Compact Triage List
+       ════════════════════════════════════════ */
+    .c-shell {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 16px 48px;
+    }
+    .c-header {
+      padding: 24px 0 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .c-header h1 {
+      font-family: var(--font-serif);
+      font-size: 28px;
+    }
+    .c-view-toggle {
+      display: flex;
+      gap: 2px;
+      background: var(--sand-200);
+      border-radius: var(--radius-sm);
+      padding: 2px;
+    }
+    .c-view-btn {
+      padding: 6px 14px;
+      font-size: 13px;
+      border: none;
+      background: transparent;
+      color: var(--ink-500);
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .c-view-btn.active { background: var(--white); color: var(--ink-900); box-shadow: var(--shadow); }
+
+    .c-tabs {
+      display: flex;
+      gap: 4px;
+      margin: 16px 0 20px;
+      border-bottom: 1px solid var(--sand-200);
+    }
+    .c-tab {
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--ink-500);
+      background: none;
+      border: none;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .c-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+    .c-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: start;
+      gap: 16px;
+      background: var(--white);
+      border: 1px solid var(--sand-200);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 8px;
+      box-shadow: var(--shadow);
+      transition: box-shadow 0.15s;
+    }
+    .c-row:hover { box-shadow: var(--shadow-md); }
+    .c-row.expanded {
+      grid-template-columns: 1fr;
+    }
+    .c-row-main { min-width: 0; }
+    .c-row-source {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-500);
+      margin-bottom: 2px;
+    }
+    .c-row-title {
+      font-family: var(--font-serif);
+      font-size: 17px;
+      line-height: 1.3;
+      color: var(--ink-900);
+      cursor: pointer;
+    }
+    .c-row-title:hover { color: var(--gold); }
+    .c-row-preview {
+      font-size: 13px;
+      color: var(--ink-500);
+      margin-top: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .c-row-time {
+      font-size: 11px;
+      color: var(--ink-400);
+      margin-top: 4px;
+    }
+    .c-row-actions {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .c-icon-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--sand-200);
+      background: var(--sand-50);
+      color: var(--ink-500);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .c-icon-btn:hover { background: var(--sand-200); color: var(--ink-700); }
+    .c-icon-btn[title]:hover::after {
+      content: attr(title);
+      position: absolute;
+      bottom: -28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--ink-900);
+      color: white;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .c-expanded-body {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--sand-200);
+      font-family: var(--font-serif);
+      font-size: 15px;
+      line-height: 1.75;
+      color: var(--ink-700);
+    }
+    .c-expanded-body p { margin-bottom: 12px; }
+    .c-expanded-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--sand-200);
+    }
+
+    /* Read-later variant */
+    .c-row.read-later { border-left: 3px solid var(--blue); }
+    .c-row.read-later .c-row-back-link {
+      font-size: 12px;
+      color: var(--gold);
+      text-decoration: none;
+      margin-top: 4px;
+      display: inline-block;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .b-layout { grid-template-columns: 1fr; }
+      .b-sidebar, .b-reader { display: none; }
+      .b-list { border-right: none; }
+      .c-row { grid-template-columns: 1fr; }
+      .c-row-actions { margin-top: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Concept Switcher ── -->
+<nav class="concept-nav">
+  <h1>TLDR Mockups</h1>
+  <button class="concept-btn active" onclick="showConcept('overview')">Overview</button>
+  <button class="concept-btn" onclick="showConcept('a')">A: Card Stream</button>
+  <button class="concept-btn" onclick="showConcept('b')">B: Mail Client</button>
+  <button class="concept-btn" onclick="showConcept('c')">C: Compact Triage</button>
+</nav>
+
+<!-- ════════════════════════════════════════
+     OVERVIEW
+     ════════════════════════════════════════ -->
+<div id="concept-overview" class="concept active">
+  <div class="design-notes">
+    <h2>Design Overview</h2>
+    <p>Three concepts for the TLDR summary inbox web app. Click the tabs above to see interactive mockups of each.</p>
+
+    <h2 style="margin-top:24px;">Concept A: Card Stream</h2>
+    <ul>
+      <li><strong>Layout:</strong> Single-column feed of full summary cards, like Substack's reader or Pocket</li>
+      <li><strong>Strengths:</strong> Summaries are short (3–5 paragraphs), so each card shows the full text — no click needed to read. Actions sit below each summary. Tabs switch between Inbox / Read Later / Archive.</li>
+      <li><strong>Weakness:</strong> Scrolling can feel long with 10+ unread summaries. Less efficient for rapid triage.</li>
+    </ul>
+
+    <h2 style="margin-top:24px;">Concept B: Two-Pane Mail Client</h2>
+    <ul>
+      <li><strong>Layout:</strong> Three-panel layout: sidebar nav, item list, and reader pane — like Gmail or Outlook</li>
+      <li><strong>Strengths:</strong> Familiar to email users. Sidebar navigation between Inbox / Read Later / Archive. Clicking a list item shows the summary in the reader pane without losing your place.</li>
+      <li><strong>Weakness:</strong> Heavier UI for what is fundamentally a simple list of short texts. Requires wider screens; mobile needs a different layout. Overkill for 5–15 items.</li>
+    </ul>
+
+    <h2 style="margin-top:24px;">Concept C: Compact Triage List</h2>
+    <ul>
+      <li><strong>Layout:</strong> Dense rows with inline icon actions. Click a title to expand the summary inline. Like a minimal task manager or Readwise inbox.</li>
+      <li><strong>Strengths:</strong> See many items at once — fastest for triage. Inline expand lets you read without leaving context. Icon buttons for quick actions (archive, save, listen). Works well on both desktop and mobile.</li>
+      <li><strong>Weakness:</strong> Expanded summaries push the list down, so you lose sight of items below.</li>
+    </ul>
+
+    <h2 style="margin-top:24px; color: var(--gold);">Recommendation: Concept C (Compact Triage)</h2>
+    <p>Concept C is the best fit because the core workflow is <em>triage</em> — quickly deciding what to do with each summary. Here's why:</p>
+    <ul>
+      <li><strong>Matches the use case:</strong> You want to scan titles, decide whether to read now, save, or archive — not read every summary top to bottom. Dense rows let you see your whole inbox at a glance.</li>
+      <li><strong>Click-to-expand is ideal for summaries:</strong> Summaries are short enough that expanding them inline works perfectly. No need for a separate reader pane. You read the summary, decide, and move on.</li>
+      <li><strong>Scales down:</strong> Works on mobile without a completely different layout. The two-pane mail client (B) collapses badly on small screens.</li>
+      <li><strong>Not overkill:</strong> A full mail client (B) is too heavy for what's essentially a short list. Card stream (A) is pretty but slow to triage. Concept C hits the sweet spot.</li>
+      <li><strong>Icon actions are fast:</strong> One click to archive, save, or listen — no need to expand first. Power users can blow through their inbox.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     CONCEPT A – Card Stream
+     ════════════════════════════════════════ -->
+<div id="concept-a" class="concept">
+  <div class="a-shell">
+    <div class="a-header">
+      <h1>TLDR</h1>
+      <span class="a-badge">4 new</span>
+    </div>
+
+    <div class="a-tabs">
+      <button class="a-tab active" onclick="showATab(this, 'a-inbox')">Inbox<span class="count">4</span></button>
+      <button class="a-tab" onclick="showATab(this, 'a-readlater')">Read Later<span class="count">2</span></button>
+      <button class="a-tab" onclick="showATab(this, 'a-archive')">Archive<span class="count">12</span></button>
+    </div>
+
+    <div id="a-inbox" class="a-tab-content">
+      <div class="a-card">
+        <div class="a-card-meta">
+          <span class="a-source-badge newsletter">Newsletter</span>
+          <span>3 hours ago</span>
+        </div>
+        <h2 class="a-card-title">The AI landscape is shifting toward smaller, specialized models</h2>
+        <div class="a-card-sender">From Stratechery by Ben Thompson</div>
+        <div class="a-card-summary">
+          <p>Thompson argues that the AI industry is undergoing a fundamental shift away from the "bigger is better" paradigm. While frontier labs continue to train massive models, the real innovation is happening at the edge — smaller models fine-tuned for specific tasks are outperforming their larger counterparts in production.</p>
+          <p>He draws a parallel to the early days of cloud computing, where enterprises initially thought they'd need massive centralized systems but eventually moved toward microservices. The same pattern is emerging in AI: specialized 7B models running locally are replacing API calls to 400B+ parameter models for many use cases.</p>
+          <p>The piece concludes with implications for the competitive landscape. Companies that can efficiently fine-tune and deploy small models may have a durable advantage over those betting solely on scale.</p>
+        </div>
+        <div class="a-card-actions">
+          <button class="a-btn primary">Read original ↗</button>
+          <button class="a-btn save">Save for later</button>
+          <button class="a-btn archive">Archive</button>
+          <button class="a-btn listen">🎧 Listen</button>
+        </div>
+      </div>
+
+      <div class="a-card">
+        <div class="a-card-meta">
+          <span class="a-source-badge rss">RSS</span>
+          <span>5 hours ago</span>
+        </div>
+        <h2 class="a-card-title">Rust 1.85 brings async closures and improved diagnostics</h2>
+        <div class="a-card-sender">From The Rust Blog</div>
+        <div class="a-card-summary">
+          <p>The latest Rust release stabilizes async closures, one of the most requested features since async/await landed. The new syntax allows closures to be async without wrapping them in async blocks, which simplifies callback-heavy code patterns common in web servers and event-driven architectures.</p>
+          <p>The compiler diagnostics have also been significantly improved. Error messages now suggest specific fixes more often, and the borrow checker explains its reasoning in more human-readable terms. The team notes that diagnostic quality is now a first-class priority alongside language features.</p>
+        </div>
+        <div class="a-card-actions">
+          <button class="a-btn primary">Read original ↗</button>
+          <button class="a-btn save">Save for later</button>
+          <button class="a-btn archive">Archive</button>
+          <button class="a-btn listen">🎧 Listen</button>
+        </div>
+      </div>
+
+      <div class="a-card">
+        <div class="a-card-meta">
+          <span class="a-source-badge extension">Extension</span>
+          <span>Yesterday</span>
+        </div>
+        <h2 class="a-card-title">How we migrated 10M rows from Postgres to SQLite without downtime</h2>
+        <div class="a-card-sender">From Kent C. Dodds Blog</div>
+        <div class="a-card-summary">
+          <p>A detailed account of migrating a production Rails application from PostgreSQL to SQLite, driven by the desire to simplify infrastructure and reduce costs. The team used a dual-write strategy during the transition period, sending all writes to both databases while gradually shifting reads to SQLite.</p>
+          <p>The biggest challenge was handling concurrent writes during migration. They built a custom reconciliation tool that compared records between both databases and resolved conflicts using timestamps. The entire migration took three weeks and resulted in a 40% reduction in hosting costs.</p>
+        </div>
+        <div class="a-card-actions">
+          <button class="a-btn primary">Read original ↗</button>
+          <button class="a-btn save">Save for later</button>
+          <button class="a-btn archive">Archive</button>
+          <button class="a-btn listen">🎧 Listen</button>
+        </div>
+      </div>
+
+      <div class="a-card">
+        <div class="a-card-meta">
+          <span class="a-source-badge newsletter">Newsletter</span>
+          <span>Yesterday</span>
+        </div>
+        <h2 class="a-card-title">Weekly digest: TypeScript 5.8, Deno 2.2, and the state of CSS</h2>
+        <div class="a-card-sender">From JavaScript Weekly</div>
+        <div class="a-card-summary">
+          <p>This week's roundup covers TypeScript 5.8's new isolated declarations feature, which enables faster type-checking by allowing declaration emit without full program analysis. Deno 2.2 adds npm workspace support and improved Node.js compatibility.</p>
+          <p>The CSS section highlights the growing adoption of container queries in production, with data showing 78% of modern browsers now supporting the feature. Several new CSS proposals are also moving through the standards process, including CSS Mixins and conditional values.</p>
+        </div>
+        <div class="a-card-actions">
+          <button class="a-btn primary">Read original ↗</button>
+          <button class="a-btn save">Save for later</button>
+          <button class="a-btn archive">Archive</button>
+          <button class="a-btn listen">🎧 Listen</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="a-readlater" class="a-tab-content" style="display:none;">
+      <div class="a-card read-later">
+        <div class="a-card-meta">
+          <span class="a-source-badge rss">RSS</span>
+          <span>Saved 2 days ago</span>
+        </div>
+        <h2 class="a-card-title">Understanding the Linux scheduler: a deep dive</h2>
+        <div class="a-card-sender">From LWN.net · <a href="#" style="color:var(--gold); text-decoration:none;">View summary</a></div>
+        <div class="a-card-actions" style="border-top: none; padding-top: 8px;">
+          <button class="a-btn primary">Read original ↗</button>
+          <button class="a-btn archive">Archive</button>
+        </div>
+      </div>
+      <div class="a-card read-later">
+        <div class="a-card-meta">
+          <span class="a-source-badge newsletter">Newsletter</span>
+          <span>Saved 4 days ago</span>
+        </div>
+        <h2 class="a-card-title">The case for boring technology in 2026</h2>
+        <div class="a-card-sender">From Pragmatic Engineer · <a href="#" style="color:var(--gold); text-decoration:none;">View summary</a></div>
+        <div class="a-card-actions" style="border-top: none; padding-top: 8px;">
+          <button class="a-btn primary">Read original ↗</button>
+          <button class="a-btn archive">Archive</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="a-archive" class="a-tab-content" style="display:none;">
+      <p style="text-align:center; color:var(--ink-500); padding:32px;">12 archived summaries — showing most recent</p>
+      <div class="a-card" style="opacity:0.7;">
+        <div class="a-card-meta">
+          <span class="a-source-badge newsletter">Newsletter</span>
+          <span>Archived 3 days ago</span>
+        </div>
+        <h2 class="a-card-title">Why every company is becoming an AI company</h2>
+        <div class="a-card-sender">From The Information</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     CONCEPT B – Two-Pane Mail Client
+     ════════════════════════════════════════ -->
+<div id="concept-b" class="concept">
+  <div class="b-layout">
+    <aside class="b-sidebar">
+      <div class="b-sidebar-brand">TLDR</div>
+      <button class="b-sidebar-item active">
+        <span class="icon">📥</span> Inbox
+        <span class="b-sidebar-count">4</span>
+      </button>
+      <button class="b-sidebar-item">
+        <span class="icon">🔖</span> Read Later
+        <span class="b-sidebar-count">2</span>
+      </button>
+      <button class="b-sidebar-item">
+        <span class="icon">📦</span> Archive
+        <span class="b-sidebar-count">12</span>
+      </button>
+      <div style="flex:1;"></div>
+      <button class="b-sidebar-item" style="opacity:0.5;">
+        <span class="icon">⚙️</span> Settings
+      </button>
+    </aside>
+
+    <div class="b-list">
+      <div class="b-list-header">Inbox — 4 summaries</div>
+
+      <div class="b-list-item selected unread">
+        <div class="b-list-source">Stratechery · Newsletter</div>
+        <div class="b-list-title">The AI landscape is shifting toward smaller, specialized models</div>
+        <div class="b-list-preview">Thompson argues that the AI industry is undergoing a fundamental shift away from the "bigger is better" paradigm…</div>
+        <div class="b-list-time">3 hours ago</div>
+      </div>
+
+      <div class="b-list-item unread">
+        <div class="b-list-source">The Rust Blog · RSS</div>
+        <div class="b-list-title">Rust 1.85 brings async closures and improved diagnostics</div>
+        <div class="b-list-preview">The latest Rust release stabilizes async closures, one of the most requested features since async/await landed…</div>
+        <div class="b-list-time">5 hours ago</div>
+      </div>
+
+      <div class="b-list-item unread">
+        <div class="b-list-source">Kent C. Dodds Blog · Extension</div>
+        <div class="b-list-title">How we migrated 10M rows from Postgres to SQLite without downtime</div>
+        <div class="b-list-preview">A detailed account of migrating a production Rails application from PostgreSQL to SQLite…</div>
+        <div class="b-list-time">Yesterday</div>
+      </div>
+
+      <div class="b-list-item unread">
+        <div class="b-list-source">JavaScript Weekly · Newsletter</div>
+        <div class="b-list-title">Weekly digest: TypeScript 5.8, Deno 2.2, and the state of CSS</div>
+        <div class="b-list-preview">This week's roundup covers TypeScript 5.8's new isolated declarations feature…</div>
+        <div class="b-list-time">Yesterday</div>
+      </div>
+    </div>
+
+    <div class="b-reader">
+      <div class="b-reader-inner">
+        <div class="b-reader-actions">
+          <button class="a-btn primary">Read original ↗</button>
+          <button class="a-btn save">Save for later</button>
+          <button class="a-btn archive">Archive</button>
+          <button class="a-btn listen">🎧 Listen</button>
+        </div>
+        <div class="b-reader-card">
+          <div class="b-reader-label">Newsletter Summary</div>
+          <h1 class="b-reader-title">The AI landscape is shifting toward smaller, specialized models</h1>
+          <div class="b-reader-meta">From Stratechery by Ben Thompson · 3 hours ago · <a href="#">Read original</a></div>
+          <div class="b-reader-body">
+            <p>Thompson argues that the AI industry is undergoing a fundamental shift away from the "bigger is better" paradigm. While frontier labs continue to train massive models, the real innovation is happening at the edge — smaller models fine-tuned for specific tasks are outperforming their larger counterparts in production.</p>
+            <p>He draws a parallel to the early days of cloud computing, where enterprises initially thought they'd need massive centralized systems but eventually moved toward microservices. The same pattern is emerging in AI: specialized 7B models running locally are replacing API calls to 400B+ parameter models for many use cases.</p>
+            <p>The piece concludes with implications for the competitive landscape. Companies that can efficiently fine-tune and deploy small models may have a durable advantage over those betting solely on scale.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     CONCEPT C – Compact Triage List (Recommended)
+     ════════════════════════════════════════ -->
+<div id="concept-c" class="concept">
+  <div class="c-shell">
+    <div class="c-header">
+      <h1 style="font-family: var(--font-serif);">TLDR</h1>
+    </div>
+
+    <div class="c-tabs">
+      <button class="c-tab active" onclick="showCTab(this, 'c-inbox')">Inbox <span style="color:var(--ink-400);">4</span></button>
+      <button class="c-tab" onclick="showCTab(this, 'c-readlater')">Read Later <span style="color:var(--ink-400);">2</span></button>
+      <button class="c-tab" onclick="showCTab(this, 'c-archive')">Archive</button>
+    </div>
+
+    <div id="c-inbox" class="c-tab-content">
+      <!-- Collapsed row -->
+      <div class="c-row" id="c-row-1">
+        <div class="c-row-main">
+          <div class="c-row-source">Stratechery · Newsletter · 3 hours ago</div>
+          <div class="c-row-title" onclick="toggleExpand('c-row-1')">The AI landscape is shifting toward smaller, specialized models</div>
+          <div class="c-row-preview">Thompson argues that the AI industry is undergoing a fundamental shift away from the "bigger is better" paradigm…</div>
+        </div>
+        <div class="c-row-actions">
+          <button class="c-icon-btn" title="Read original" onclick="event.stopPropagation()">↗</button>
+          <button class="c-icon-btn" title="Save for later" onclick="event.stopPropagation()">🔖</button>
+          <button class="c-icon-btn" title="Archive" onclick="event.stopPropagation()">✓</button>
+          <button class="c-icon-btn" title="Listen" onclick="event.stopPropagation()">🎧</button>
+        </div>
+        <div class="c-expanded-body" style="display:none;">
+          <p>Thompson argues that the AI industry is undergoing a fundamental shift away from the "bigger is better" paradigm. While frontier labs continue to train massive models, the real innovation is happening at the edge — smaller models fine-tuned for specific tasks are outperforming their larger counterparts in production.</p>
+          <p>He draws a parallel to the early days of cloud computing, where enterprises initially thought they'd need massive centralized systems but eventually moved toward microservices. The same pattern is emerging in AI: specialized 7B models running locally are replacing API calls to 400B+ parameter models for many use cases.</p>
+          <p>The piece concludes with implications for the competitive landscape. Companies that can efficiently fine-tune and deploy small models may have a durable advantage over those betting solely on scale.</p>
+          <div class="c-expanded-actions">
+            <button class="a-btn primary">Read original ↗</button>
+            <button class="a-btn save">Save for later</button>
+            <button class="a-btn archive">Archive</button>
+            <button class="a-btn listen">🎧 Listen</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Expanded row (demo) -->
+      <div class="c-row expanded" id="c-row-2">
+        <div class="c-row-main">
+          <div class="c-row-source">The Rust Blog · RSS · 5 hours ago</div>
+          <div class="c-row-title" onclick="toggleExpand('c-row-2')">Rust 1.85 brings async closures and improved diagnostics</div>
+        </div>
+        <div class="c-expanded-body">
+          <p>The latest Rust release stabilizes async closures, one of the most requested features since async/await landed. The new syntax allows closures to be async without wrapping them in async blocks, which simplifies callback-heavy code patterns common in web servers and event-driven architectures.</p>
+          <p>The compiler diagnostics have also been significantly improved. Error messages now suggest specific fixes more often, and the borrow checker explains its reasoning in more human-readable terms. The team notes that diagnostic quality is now a first-class priority alongside language features.</p>
+          <div class="c-expanded-actions">
+            <button class="a-btn primary">Read original ↗</button>
+            <button class="a-btn save">Save for later</button>
+            <button class="a-btn archive">Archive</button>
+            <button class="a-btn listen">🎧 Listen</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Collapsed rows -->
+      <div class="c-row" id="c-row-3">
+        <div class="c-row-main">
+          <div class="c-row-source">Kent C. Dodds Blog · Extension · Yesterday</div>
+          <div class="c-row-title" onclick="toggleExpand('c-row-3')">How we migrated 10M rows from Postgres to SQLite without downtime</div>
+          <div class="c-row-preview">A detailed account of migrating a production Rails application from PostgreSQL to SQLite…</div>
+        </div>
+        <div class="c-row-actions">
+          <button class="c-icon-btn" title="Read original">↗</button>
+          <button class="c-icon-btn" title="Save for later">🔖</button>
+          <button class="c-icon-btn" title="Archive">✓</button>
+          <button class="c-icon-btn" title="Listen">🎧</button>
+        </div>
+        <div class="c-expanded-body" style="display:none;">
+          <p>A detailed account of migrating a production Rails application from PostgreSQL to SQLite, driven by the desire to simplify infrastructure and reduce costs. The team used a dual-write strategy during the transition period.</p>
+          <p>The biggest challenge was handling concurrent writes during migration. They built a custom reconciliation tool that compared records between both databases and resolved conflicts using timestamps. The entire migration took three weeks and resulted in a 40% reduction in hosting costs.</p>
+          <div class="c-expanded-actions">
+            <button class="a-btn primary">Read original ↗</button>
+            <button class="a-btn save">Save for later</button>
+            <button class="a-btn archive">Archive</button>
+            <button class="a-btn listen">🎧 Listen</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="c-row" id="c-row-4">
+        <div class="c-row-main">
+          <div class="c-row-source">JavaScript Weekly · Newsletter · Yesterday</div>
+          <div class="c-row-title" onclick="toggleExpand('c-row-4')">Weekly digest: TypeScript 5.8, Deno 2.2, and the state of CSS</div>
+          <div class="c-row-preview">This week's roundup covers TypeScript 5.8's new isolated declarations feature…</div>
+        </div>
+        <div class="c-row-actions">
+          <button class="c-icon-btn" title="Read original">↗</button>
+          <button class="c-icon-btn" title="Save for later">🔖</button>
+          <button class="c-icon-btn" title="Archive">✓</button>
+          <button class="c-icon-btn" title="Listen">🎧</button>
+        </div>
+        <div class="c-expanded-body" style="display:none;">
+          <p>This week's roundup covers TypeScript 5.8's new isolated declarations feature, which enables faster type-checking by allowing declaration emit without full program analysis. Deno 2.2 adds npm workspace support and improved Node.js compatibility.</p>
+          <p>The CSS section highlights the growing adoption of container queries in production, with data showing 78% of modern browsers now supporting the feature.</p>
+          <div class="c-expanded-actions">
+            <button class="a-btn primary">Read original ↗</button>
+            <button class="a-btn save">Save for later</button>
+            <button class="a-btn archive">Archive</button>
+            <button class="a-btn listen">🎧 Listen</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="c-readlater" class="c-tab-content" style="display:none;">
+      <div class="c-row read-later">
+        <div class="c-row-main">
+          <div class="c-row-source">LWN.net · RSS · Saved 2 days ago</div>
+          <div class="c-row-title">Understanding the Linux scheduler: a deep dive</div>
+          <a href="#" class="c-row-back-link">View summary →</a>
+        </div>
+        <div class="c-row-actions">
+          <button class="c-icon-btn" title="Read original">↗</button>
+          <button class="c-icon-btn" title="Archive">✓</button>
+        </div>
+      </div>
+
+      <div class="c-row read-later">
+        <div class="c-row-main">
+          <div class="c-row-source">Pragmatic Engineer · Newsletter · Saved 4 days ago</div>
+          <div class="c-row-title">The case for boring technology in 2026</div>
+          <a href="#" class="c-row-back-link">View summary →</a>
+        </div>
+        <div class="c-row-actions">
+          <button class="c-icon-btn" title="Read original">↗</button>
+          <button class="c-icon-btn" title="Archive">✓</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="c-archive" class="c-tab-content" style="display:none;">
+      <div class="c-row" style="opacity:0.6;">
+        <div class="c-row-main">
+          <div class="c-row-source">The Information · Newsletter · Archived 3 days ago</div>
+          <div class="c-row-title">Why every company is becoming an AI company</div>
+        </div>
+      </div>
+      <div class="c-row" style="opacity:0.6;">
+        <div class="c-row-main">
+          <div class="c-row-source">Hacker News · RSS · Archived 5 days ago</div>
+          <div class="c-row-title">PostgreSQL 18 beta: five features worth knowing</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showConcept(id) {
+  document.querySelectorAll('.concept').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.concept-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('concept-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function showATab(btn, tabId) {
+  btn.closest('.a-shell').querySelectorAll('.a-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  btn.closest('.a-shell').querySelectorAll('.a-tab-content').forEach(c => c.style.display = 'none');
+  document.getElementById(tabId).style.display = 'block';
+}
+
+function showCTab(btn, tabId) {
+  btn.closest('.c-shell').querySelectorAll('.c-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  btn.closest('.c-shell').querySelectorAll('.c-tab-content').forEach(c => c.style.display = 'none');
+  document.getElementById(tabId).style.display = 'block';
+}
+
+function toggleExpand(rowId) {
+  const row = document.getElementById(rowId);
+  const body = row.querySelector('.c-expanded-body');
+  const preview = row.querySelector('.c-row-preview');
+  const actions = row.querySelector('.c-row-actions');
+
+  if (row.classList.contains('expanded')) {
+    row.classList.remove('expanded');
+    body.style.display = 'none';
+    if (preview) preview.style.display = '';
+    if (actions) actions.style.display = '';
+  } else {
+    row.classList.add('expanded');
+    body.style.display = 'block';
+    if (preview) preview.style.display = 'none';
+    if (actions) actions.style.display = 'none';
+  }
+}
+</script>
+</body>
+</html>
