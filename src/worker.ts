@@ -13,6 +13,8 @@ export interface Env {
 	PUSHOVER_API_TOKEN?: string;
 	OPENAI_API_KEY?: string;
 	TTS_ENABLED?: string;
+	TTS_AUDIO_BUCKET?: R2Bucket;
+	TTS_AUDIO_PUBLIC_URL?: string;
 }
 
 export interface RssFeedConfig {
@@ -467,9 +469,7 @@ export async function sendSummaryEmail(
 	dedupeKey: string,
 	summaryPrefix: string = NEWSLETTER_SUMMARY_PREFIX,
 ): Promise<void> {
-	let attachments:
-		| Array<{ filename: string; content: string }>
-		| undefined;
+	let audioUrl: string | undefined;
 
 	if (env.TTS_ENABLED === "true" && env.OPENAI_API_KEY) {
 		try {
@@ -477,12 +477,13 @@ export async function sendSummaryEmail(
 				input.summary,
 				env.OPENAI_API_KEY,
 			);
-			attachments = [
-				{
-					filename: "summary.mp3",
-					content: arrayBufferToBase64(audioBuffer),
-				},
-			];
+			if (env.TTS_AUDIO_BUCKET && env.TTS_AUDIO_PUBLIC_URL) {
+				audioUrl = await uploadTtsAudio(
+					audioBuffer,
+					env.TTS_AUDIO_BUCKET,
+					env.TTS_AUDIO_PUBLIC_URL,
+				);
+			}
 		} catch (error) {
 			console.error("TTS audio generation failed:", error);
 		}
@@ -493,9 +494,8 @@ export async function sendSummaryEmail(
 			from: formatSummaryFrom(env.SUMMARY_FROM, summaryPrefix),
 			to: env.EMAIL_TO,
 			subject: `${summaryPrefix}: ${sanitizeSubject(input.subject)}`,
-			html: renderSummaryHtml(input, summaryPrefix),
-			text: renderSummaryText(input),
-			attachments,
+			html: renderSummaryHtml({ ...input, audioUrl }, summaryPrefix),
+			text: renderSummaryText({ ...input, audioUrl }),
 		},
 		env.RESEND_API_KEY,
 		dedupeKey,
@@ -543,13 +543,16 @@ export async function sendPushoverNotification(
 	}
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-	const bytes = new Uint8Array(buffer);
-	let binary = "";
-	for (let i = 0; i < bytes.byteLength; i++) {
-		binary += String.fromCharCode(bytes[i]);
-	}
-	return btoa(binary);
+export async function uploadTtsAudio(
+	audioBuffer: ArrayBuffer,
+	bucket: R2Bucket,
+	publicBaseUrl: string,
+): Promise<string> {
+	const key = `${Date.now()}-${crypto.randomUUID()}.mp3`;
+	await bucket.put(key, audioBuffer, {
+		httpMetadata: { contentType: "audio/mpeg" },
+	});
+	return `${publicBaseUrl.replace(/\/+$/, "")}/${key}`;
 }
 
 export async function generateTtsAudio(
@@ -584,6 +587,7 @@ export function renderSummaryHtml(input: {
 	sender: string;
 	summary: string;
 	articleUrl?: string;
+	audioUrl?: string;
 }, summaryPrefix: string = NEWSLETTER_SUMMARY_PREFIX): string {
 	const renderParagraphs = (text: string) =>
 		text
@@ -607,7 +611,7 @@ export function renderSummaryHtml(input: {
       <p style="margin:0 0 12px; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:#9a6b2f;">${summaryPrefix}</p>
       <h1 style="margin:0 0 12px; font-size:30px; line-height:1.2; color:#111827;">${escapeHtml(input.subject)}</h1>
       ${articleLink}
-      ${renderParagraphs(input.summary)}
+      ${renderParagraphs(input.summary)}${input.audioUrl ? `\n      <p style="margin:16px 0 0; line-height:1.6;"><a href="${escapeHtml(input.audioUrl)}" style="color:#9a6b2f;">&#x1F3A7; Listen to summary</a></p>` : ""}
     </div>
   </body>
 </html>`;
@@ -618,16 +622,21 @@ export function renderSummaryText(input: {
 	sender: string;
 	summary: string;
 	articleUrl?: string;
+	audioUrl?: string;
 }): string {
 	const header = input.articleUrl
 		? `From: ${input.sender} | Link: ${input.articleUrl}`
 		: `From: ${input.sender}`;
-	return [
+	const lines = [
 		header,
 		"---",
 		"",
 		input.summary.trim(),
-	].join("\n");
+	];
+	if (input.audioUrl) {
+		lines.push("", `Listen: ${input.audioUrl}`);
+	}
+	return lines.join("\n");
 }
 
 export function renderForwardingConfirmationHtml(input: {
@@ -1047,7 +1056,6 @@ async function sendResendEmail(
 		subject: string;
 		html: string;
 		text: string;
-		attachments?: Array<{ filename: string; content: string }>;
 	},
 	apiKey: string,
 	idempotencyKey?: string,

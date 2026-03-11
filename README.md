@@ -76,15 +76,28 @@ When both are configured, each summary email will also trigger a push notificati
 
 ### 4. Configure text-to-speech audio (optional)
 
-To receive an MP3 audio version of each summary attached to the email, enable [OpenAI TTS](https://platform.openai.com/docs/guides/text-to-speech):
+To receive a linked MP3 audio version of each summary in the email, enable [OpenAI TTS](https://platform.openai.com/docs/guides/text-to-speech) and set up a Cloudflare R2 bucket for audio storage:
+
+```sh
+# Create the R2 bucket
+npx wrangler r2 bucket create tldr-tts-audio
+```
+
+Enable public access on the bucket via the Cloudflare Dashboard (R2 > tldr-tts-audio > Settings > Public access) using either a custom domain or the r2.dev subdomain.
+
+Optionally, add a lifecycle rule to auto-delete audio files after 90 days: R2 > tldr-tts-audio > Settings > Object lifecycle rules > Add rule > Delete objects after 90 days.
+
+Then set the secrets:
 
 ```sh
 npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put TTS_ENABLED
 # Enter: true
+npx wrangler secret put TTS_AUDIO_PUBLIC_URL
+# Enter: https://your-r2-public-domain.com (the public base URL of the bucket)
 ```
 
-When both are configured, each summary email will include a `summary.mp3` attachment you can listen to. The default voice is `alloy` — you can change it by modifying the `TTS_VOICE` constant in `src/worker.ts` (options: alloy, echo, fable, onyx, nova, shimmer). Pricing is ~$0.00005 per summary ($15 per 1M characters). If TTS generation fails, the email is still sent without the attachment.
+When configured, each summary email will include a "Listen to summary" link pointing to the MP3 on R2. The default voice is `alloy` — you can change it by modifying the `TTS_VOICE` constant in `src/worker.ts` (options: alloy, echo, fable, onyx, nova, shimmer). Pricing is ~$0.00005 per summary ($15 per 1M characters). If TTS generation or upload fails, the email is still sent without the audio link.
 
 ### 5. Configure RSS feeds (optional)
 

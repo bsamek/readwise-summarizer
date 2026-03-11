@@ -14,5 +14,9 @@ preview_id = "5160d02695ca400f8c737c71516b0d7c"
 [[send_email]]
 name = "EMAIL"
 
+[[r2_buckets]]
+binding = "TTS_AUDIO_BUCKET"
+bucket_name = "tldr-tts-audio"
+
 [triggers]
 crons = ["*/30 * * * *"]

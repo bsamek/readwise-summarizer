@@ -14,10 +14,27 @@ import {
 	renderSummaryText,
 	sendPushoverNotification,
 	sendSummaryEmail,
+	uploadTtsAudio,
 	type EmailMetadata,
 	type Env,
 	type RssItem,
 } from "../src/worker";
+
+class MemoryR2Bucket {
+	private readonly store = new Map<string, { body: ArrayBuffer; httpMetadata?: Record<string, string> }>();
+
+	async put(key: string, value: ArrayBuffer, options?: { httpMetadata?: Record<string, string> }): Promise<void> {
+		this.store.set(key, { body: value, httpMetadata: options?.httpMetadata });
+	}
+
+	async get(key: string): Promise<{ body: ArrayBuffer; httpMetadata?: Record<string, string> } | null> {
+		return this.store.get(key) ?? null;
+	}
+
+	getStore() {
+		return this.store;
+	}
+}
 
 class MemoryKVNamespace {
 	private readonly store = new Map<string, string>();
@@ -1050,7 +1067,7 @@ describe("TTS audio generation", () => {
 		).rejects.toThrow("OpenAI TTS API error: 429");
 	});
 
-	it("attaches MP3 to summary email when TTS is enabled", async () => {
+	it("includes audio URL in summary email when TTS and R2 are configured", async () => {
 		const fakeAudio = new Uint8Array([0xff, 0xfb, 0x90, 0x00]);
 		fetchMock.mockImplementation(async (input) => {
 			if (typeof input === "string" && input.includes("api.openai.com")) {
@@ -1071,6 +1088,8 @@ describe("TTS audio generation", () => {
 		const env = createEnv({
 			OPENAI_API_KEY: "openai-key",
 			TTS_ENABLED: "true",
+			TTS_AUDIO_BUCKET: new MemoryR2Bucket() as unknown as R2Bucket,
+			TTS_AUDIO_PUBLIC_URL: "https://audio.example.com",
 		});
 
 		await sendSummaryEmail(
@@ -1084,13 +1103,51 @@ describe("TTS audio generation", () => {
 			([input]) => typeof input === "string" && input.includes("resend.com"),
 		);
 		const resendBody = JSON.parse(resendCall![1]!.body as string);
-		expect(resendBody.attachments).toBeDefined();
-		expect(resendBody.attachments).toHaveLength(1);
-		expect(resendBody.attachments[0].filename).toBe("summary.mp3");
-		expect(resendBody.attachments[0].content).toBeTruthy();
+		expect(resendBody.attachments).toBeUndefined();
+		expect(resendBody.html).toContain("Listen to summary");
+		expect(resendBody.html).toContain("https://audio.example.com/");
+		expect(resendBody.text).toContain("Listen: https://audio.example.com/");
 	});
 
-	it("sends email without attachment when TTS is not configured", async () => {
+	it("sends email without audio URL when R2 is not configured", async () => {
+		const fakeAudio = new Uint8Array([0xff, 0xfb, 0x90, 0x00]);
+		fetchMock.mockImplementation(async (input) => {
+			if (typeof input === "string" && input.includes("api.openai.com")) {
+				return new Response(fakeAudio.buffer, {
+					status: 200,
+					headers: { "Content-Type": "audio/mpeg" },
+				});
+			}
+			if (typeof input === "string" && input.includes("resend.com")) {
+				return new Response(JSON.stringify({ id: "email_1" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			}
+			throw new Error(`Unexpected fetch: ${String(input)}`);
+		});
+
+		const env = createEnv({
+			OPENAI_API_KEY: "openai-key",
+			TTS_ENABLED: "true",
+			// No TTS_AUDIO_BUCKET or TTS_AUDIO_PUBLIC_URL
+		});
+
+		await sendSummaryEmail(
+			{ subject: "Test", sender: "blog@example.com", summary: "A summary." },
+			env,
+			"dedup-tts-no-r2",
+		);
+
+		const resendCall = fetchMock.mock.calls.find(
+			([input]) => typeof input === "string" && input.includes("resend.com"),
+		);
+		const resendBody = JSON.parse(resendCall![1]!.body as string);
+		expect(resendBody.html).not.toContain("Listen to summary");
+		expect(resendBody.text).not.toContain("Listen:");
+	});
+
+	it("sends email without audio URL when TTS is not configured", async () => {
 		fetchMock.mockResolvedValue(
 			new Response(JSON.stringify({ id: "email_1" }), {
 				status: 200,
@@ -1109,10 +1166,10 @@ describe("TTS audio generation", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		expect(fetchMock.mock.calls[0][0]).toContain("resend.com");
 		const resendBody = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
-		expect(resendBody.attachments).toBeUndefined();
+		expect(resendBody.html).not.toContain("Listen to summary");
 	});
 
-	it("sends email without attachment when TTS fails", async () => {
+	it("sends email without audio URL when TTS fails", async () => {
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		fetchMock.mockImplementation(async (input) => {
 			if (typeof input === "string" && input.includes("api.openai.com")) {
@@ -1130,6 +1187,8 @@ describe("TTS audio generation", () => {
 		const env = createEnv({
 			OPENAI_API_KEY: "openai-key",
 			TTS_ENABLED: "true",
+			TTS_AUDIO_BUCKET: new MemoryR2Bucket() as unknown as R2Bucket,
+			TTS_AUDIO_PUBLIC_URL: "https://audio.example.com",
 		});
 
 		await sendSummaryEmail(
@@ -1143,7 +1202,7 @@ describe("TTS audio generation", () => {
 		);
 		expect(resendCall).toBeTruthy();
 		const resendBody = JSON.parse(resendCall![1]!.body as string);
-		expect(resendBody.attachments).toBeUndefined();
+		expect(resendBody.html).not.toContain("Listen to summary");
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"TTS audio generation failed:",
 			expect.any(Error),
@@ -1172,5 +1231,80 @@ describe("TTS audio generation", () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		expect(fetchMock.mock.calls[0][0]).toContain("resend.com");
+	});
+});
+
+describe("uploadTtsAudio", () => {
+	it("uploads audio to R2 and returns a public URL", async () => {
+		const bucket = new MemoryR2Bucket();
+		const audio = new Uint8Array([0xff, 0xfb, 0x90]).buffer;
+
+		const url = await uploadTtsAudio(
+			audio,
+			bucket as unknown as R2Bucket,
+			"https://audio.example.com",
+		);
+
+		expect(url).toMatch(/^https:\/\/audio\.example\.com\/\d+-[a-f0-9-]+\.mp3$/);
+		expect(bucket.getStore().size).toBe(1);
+	});
+
+	it("strips trailing slash from public base URL", async () => {
+		const bucket = new MemoryR2Bucket();
+		const audio = new Uint8Array([0xff]).buffer;
+
+		const url = await uploadTtsAudio(
+			audio,
+			bucket as unknown as R2Bucket,
+			"https://audio.example.com/",
+		);
+
+		expect(url).not.toContain("//1");
+		expect(url).toMatch(/^https:\/\/audio\.example\.com\/\d+-[a-f0-9-]+\.mp3$/);
+	});
+});
+
+describe("render functions with audioUrl", () => {
+	it("includes audio link in HTML when audioUrl is provided", () => {
+		const html = renderSummaryHtml({
+			subject: "Test",
+			sender: "blog@example.com",
+			summary: "A summary.",
+			audioUrl: "https://audio.example.com/test.mp3",
+		});
+
+		expect(html).toContain("Listen to summary");
+		expect(html).toContain("https://audio.example.com/test.mp3");
+	});
+
+	it("omits audio link in HTML when audioUrl is not provided", () => {
+		const html = renderSummaryHtml({
+			subject: "Test",
+			sender: "blog@example.com",
+			summary: "A summary.",
+		});
+
+		expect(html).not.toContain("Listen to summary");
+	});
+
+	it("includes listen URL in text when audioUrl is provided", () => {
+		const text = renderSummaryText({
+			subject: "Test",
+			sender: "blog@example.com",
+			summary: "A summary.",
+			audioUrl: "https://audio.example.com/test.mp3",
+		});
+
+		expect(text).toContain("Listen: https://audio.example.com/test.mp3");
+	});
+
+	it("omits listen URL in text when audioUrl is not provided", () => {
+		const text = renderSummaryText({
+			subject: "Test",
+			sender: "blog@example.com",
+			summary: "A summary.",
+		});
+
+		expect(text).not.toContain("Listen:");
 	});
 });
